@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Expense Tracker Pro</title>
+
+    <link rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}">
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+
+    <button
+        class="dark-mode-btn"
+        onclick="toggleDarkMode()">
+
+        🌙 Dark Mode
+
+    </button>
+
+    <div class="container">
+
+        <h1>💰 Expense Tracker Pro</h1>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="success-message">
+            {{ messages[0] }}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <div class="dashboard">
+
+            <div class="card total-card">
+                <h3>Total Expenses</h3>
+                <p>₹{{ total }}</p>
+            </div>
+
+            <div class="card transaction-card">
+                <h3>Transactions</h3>
+                <p>{{ transaction_count }}</p>
+            </div>
+
+            <div class="card highest-card">
+                <h3>Highest Expense</h3>
+                <p>₹{{ highest_expense }}</p>
+            </div>
+
+            <div class="card average-card">
+                <h3>Average Expense</h3>
+                <p>₹{{ average_expense }}</p>
+            </div>
+
+        </div>
+
+        <!-- ANALYTICS SECTION -->
+
+        <div class="analytics-card">
+
+            <h2>📊 Expense Analytics</h2>
+
+            <div class="analytics-grid">
+
+               <div class="chart-box">
+
+    <h3>Expense Distribution</h3>
+
+    <canvas id="expenseChart"></canvas>
+
+</div>
+
+<div class="chart-box">
+
+    <h3>Category Spending</h3>
+
+    <canvas id="barChart"></canvas>
+
+</div>
+
+                <div class="summary-box">
+
+                    <h3>Category Totals</h3>
+
+                    <ul class="summary-list">
+
+                        <li>
+                            🍔 Food :
+                            ₹{{ category_totals['Food'] }}
+                        </li>
+
+                        <li>
+                            🚗 Travel :
+                            ₹{{ category_totals['Travel'] }}
+                        </li>
+
+                        <li>
+                            🏠 Rent :
+                            ₹{{ category_totals['Rent'] }}
+                        </li>
+
+                        <li>
+                            🛒 Shopping :
+                            ₹{{ category_totals['Shopping'] }}
+                        </li>
+
+                        <li>
+                            🎉 Fun :
+                            ₹{{ category_totals['Fun'] }}
+                        </li>
+
+                        <li>
+                            📦 Other :
+                            ₹{{ category_totals['Other'] }}
+                        </li>
+
+                    </ul>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ADD EXPENSE -->
+
+        <div class="form-card">
+
+            <h2>Add Expense</h2>
+
+            <form method="POST">
+
+                <input
+                    type="text"
+                    name="name"
+                    placeholder="Expense Name"
+                    required>
+
+                <input
+                    type="number"
+                    name="amount"
+                    placeholder="Amount"
+                    required>
+
+                <select
+                    name="category"
+                    required>
+
+                    <option value="">Select Category</option>
+                    <option value="Food">Food</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Fun">Fun</option>
+                    <option value="Other">Other</option>
+
+                </select>
+
+                <button type="submit">
+                    Add Expense
+                </button>
+
+            </form>
+
+        </div>
+
+        <!-- HISTORY -->
+
+        <div class="table-card">
+
+            <h2>Expense History</h2>
+
+            <div class="search-section">
+
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="🔍 Search Expense..."
+                    onkeyup="searchExpenses()">
+
+                <select
+                    id="categoryFilter"
+                    onchange="searchExpenses()">
+
+                    <option value="all">All Categories</option>
+                    <option value="food">Food</option>
+                    <option value="travel">Travel</option>
+                    <option value="rent">Rent</option>
+                    <option value="shopping">Shopping</option>
+                    <option value="fun">Fun</option>
+                    <option value="other">Other</option>
+
+                </select>
+
+            </div>
+
+            <table>
+
+                <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Actions</th>
+                </tr>
+
+                {% for expense in expenses %}
+
+                <tr
+                    class="expense-row"
+                    data-name="{{ expense.name }}"
+                    data-category="{{ expense.category }}">
+
+                    <td>{{ expense.name }}</td>
+
+                    <td>
+                        <span class="badge {{ expense.category.lower() }}">
+                            {{ expense.category }}
+                        </span>
+                    </td>
+
+                    <td>₹{{ expense.amount }}</td>
+
+                    <td>
+
+                        <button
+                            type="button"
+                            class="edit-btn"
+                            onclick="openEditModal(
+                            '{{ expense.id }}',
+                            '{{ expense.name }}',
+                            '{{ expense.amount }}',
+                            '{{ expense.category }}'
+                            )">
+
+                            Edit
+
+                        </button>
+
+                        <a
+                            href="/delete/{{ expense.id }}"
+                            onclick="return confirmDelete()">
+
+                            <button
+                                type="button"
+                                class="delete-btn">
+
+                                Delete
+
+                            </button>
+
+                        </a>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- EDIT MODAL -->
+
+    <div
+        id="editModal"
+        class="modal">
+
+        <div class="modal-content">
+
+            <span
+                class="close-btn"
+                onclick="closeEditModal()">
+
+                &times;
+
+            </span>
+
+            <h2>Edit Expense</h2>
+
+            <form
+                id="editForm"
+                method="POST">
+
+                <input
+                    type="text"
+                    id="editName"
+                    name="name"
+                    required>
+
+                <input
+                    type="number"
+                    id="editAmount"
+                    name="amount"
+                    required>
+
+                <select
+                    id="editCategory"
+                    name="category"
+                    required>
+
+                    <option value="Food">Food</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Fun">Fun</option>
+                    <option value="Other">Other</option>
+
+                </select>
+
+                <button type="submit">
+                    Save Changes
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    <!-- CHART DATA -->
+
+ <script>
+
+const chartLabels = [
+    "Food",
+    "Travel",
+    "Rent",
+    "Shopping",
+    "Fun",
+    "Other"
+];
+
+const chartValues = [
+    "{{ category_totals['Food'] }}",
+    "{{ category_totals['Travel'] }}",
+    "{{ category_totals['Rent'] }}",
+    "{{ category_totals['Shopping'] }}",
+    "{{ category_totals['Fun'] }}",
+    "{{ category_totals['Other'] }}"
+];
+
+</script>
+
+</body>
+
+</html>
