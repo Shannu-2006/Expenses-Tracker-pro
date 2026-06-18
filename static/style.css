@@ -380,3 +380,33 @@ tr:hover{
         margin-bottom:20px;
     }
 }
+
+/* LOGIN PAGE */
+
+.login-card{
+max-width:450px;
+margin:80px auto;
+text-align:center;
+}
+
+.login-form{
+display:flex;
+flex-direction:column;
+align-items:center;
+gap:15px;
+}
+
+.login-form input{
+width:280px;
+min-width:auto;
+}
+
+.login-form button{
+width:150px;
+margin-top:10px;
+}
+
+.auth-link{
+margin-top:20px;
+}
+
