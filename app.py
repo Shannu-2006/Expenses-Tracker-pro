@@ -95,6 +95,13 @@ def register():
         if existing_user:
             flash("Email already exists")
             return redirect('/register')
+        existing_username = User.query.filter_by(
+            username=username
+        ).first()
+
+        if existing_username:
+            flash("Username already exists")
+            return redirect('/register')
 
         hashed_password = generate_password_hash(
             password
