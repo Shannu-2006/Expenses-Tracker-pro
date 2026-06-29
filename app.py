@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import (
     Flask,
     render_template,
@@ -45,8 +46,32 @@ class User(db.Model):
         db.String(255),
         nullable=False
     )
+class Budget(db.Model):
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
 
+    amount = db.Column(
+        db.Integer,
+        nullable=False
+    )
 
+    month = db.Column(
+        db.Integer,
+        nullable=False
+    )
+
+    year = db.Column(
+        db.Integer,
+        nullable=False
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('user.id'),
+        nullable=False
+    )
 class Expense(db.Model):
     id = db.Column(
         db.Integer,
@@ -152,13 +177,111 @@ def login():
 def logout():
 
     session.clear()
+@app.route('/delete_budget')
+def delete_budget():
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    budget = Budget.query.filter_by(
+        user_id=session['user_id'],
+        month=current_month,
+        year=current_year
+    ).first()
+
+    if budget:
+
+        db.session.delete(budget)
+        db.session.commit()
+
+        flash("Budget deleted successfully!")
+
+    else:
+
+        flash("No budget found for this month.")
+
+    return redirect('/')
 
     return redirect('/login')
+@app.route('/reset_budget')
+def reset_budget():
 
+    if 'user_id' not in session:
+        return redirect('/login')
 
-with app.app_context():
-    db.create_all()
+    current_month = datetime.now().month
+    current_year = datetime.now().year
 
+    budget = Budget.query.filter_by(
+        user_id=session['user_id'],
+        month=current_month,
+        year=current_year
+    ).first()
+
+    if budget:
+
+        budget.amount = 0
+        db.session.commit()
+
+        flash("Budget reset successfully!")
+
+    else:
+
+        flash("No budget found for this month.")
+
+    return redirect('/')
+@app.route('/set_budget', methods=['POST'])
+def set_budget():
+
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    amount = int(request.form['budget'])
+
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    budget = Budget.query.filter_by(
+        user_id=session['user_id'],
+        month=current_month,
+        year=current_year
+    ).first()
+
+    if budget:
+
+        budget.amount = amount
+
+    else:
+
+        budget = Budget(
+            amount=amount,
+            month=current_month,
+            year=current_year,
+            user_id=session['user_id']
+        )
+
+        db.session.add(budget)
+
+    db.session.commit()
+
+    flash("Budget Saved Successfully!")
+
+    return redirect('/')
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    budget = Budget.query.filter_by(
+        user_id=session['user_id'],
+        month=current_month,
+        year=current_year
+    ).first()
+
+    budget_amount = 0
+
+    if budget:
+        budget_amount = budget.amount
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -172,13 +295,12 @@ def home():
         amount = request.form['amount']
         category = request.form['category']
 
-        
         expense = Expense(
             name=name,
             amount=int(amount),
             category=category,
             user_id=session['user_id']
-    )
+        )
 
         db.session.add(expense)
         db.session.commit()
@@ -186,6 +308,28 @@ def home():
         flash("Expense added successfully!")
 
         return redirect('/')
+
+    # -----------------------------
+    # Get Current Month Budget
+    # -----------------------------
+
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    budget = Budget.query.filter_by(
+        user_id=session['user_id'],
+        month=current_month,
+        year=current_year
+    ).first()
+
+    budget_amount = 0
+
+    if budget:
+        budget_amount = budget.amount
+
+    # -----------------------------
+    # Get Expenses
+    # -----------------------------
 
     expenses = Expense.query.filter_by(
         user_id=session['user_id']
@@ -241,7 +385,54 @@ def home():
         "transactions": transaction_count,
         "highest_expense": highest_expense,
         "average_expense": average_expense
+        
     }
+    budget_used = total
+
+    remaining_budget = budget_amount - total
+
+    if remaining_budget < 0:
+        remaining_budget = 0
+
+       # -----------------------------
+    # Budget Progress Percentage
+    # -----------------------------
+
+    actual_budget_percentage = 0
+    budget_percentage = 0
+    budget_status = "healthy"
+
+    if budget_amount > 0:
+
+        actual_budget_percentage = (
+            budget_used / budget_amount
+        ) * 100
+
+        budget_percentage = min(
+            actual_budget_percentage,
+            100
+        )
+
+        if actual_budget_percentage >= 100:
+            budget_status = "danger"
+
+        elif actual_budget_percentage >= 80:
+            budget_status = "warning"
+
+        else:
+            budget_status = "healthy"
+
+    # -----------------------------
+    # Current Budget Information
+    # -----------------------------
+
+    month_name = datetime.now().strftime("%B")
+    current_year = datetime.now().year
+
+    if budget_amount > 0:
+        budget_state = "Active"
+    else:
+        budget_state = "No Budget Set"
 
     return render_template(
         'index.html',
@@ -253,10 +444,17 @@ def home():
         category_totals=category_totals,
         highest_category=highest_category,
         highest_category_amount=highest_category_amount,
-        monthly_summary=monthly_summary
+        monthly_summary=monthly_summary,
+        budget_amount=budget_amount,
+        budget_used=budget_used,
+        remaining_budget=remaining_budget,
+        budget_percentage=budget_percentage,
+        budget_status=budget_status,
+        actual_budget_percentage=actual_budget_percentage,
+        month_name=month_name,
+        current_year=current_year,
+        budget_state=budget_state
     )
-
-
 @app.route('/update/<int:id>', methods=['POST'])
 def update(id):
 

@@ -120,6 +120,14 @@ window.onload = function() {
     createExpenseChart();
     createBarChart();
 
+    const progress =
+        document.querySelector(".progress-fill");
+
+    if (progress) {
+        progress.style.width =
+            progress.dataset.progress + "%";
+    }
+
 }
 
 function createExpenseChart() {

@@ -64,14 +64,133 @@
                 <h3>Highest Expense</h3>
                 <p>₹{{ highest_expense }}</p>
             </div>
+            <div class="form-card">
 
-            <div class="card average-card">
-                <h3>Average Expense</h3>
-                <p>₹{{ average_expense }}</p>
-            </div>
+    <h2>💰 Monthly Budget</h2>
 
+    <form action="/set_budget" method="POST">
+
+        <input
+            type="number"
+            name="budget"
+            placeholder="Enter Monthly Budget"
+            value="{{ budget_amount }}"
+            required>
+
+        <button type="submit">
+            Save Budget
+        </button>
+    <a
+         href="/delete_budget"
+         onclick="return confirm('Delete budget for this month?');">
+    <button
+        type="button"
+        class="delete-budget-btn">
+        Delete Budget
+    </button>
+    <form
+    action="/reset_budget"
+    method="GET"
+    onsubmit="return confirm('Reset budget to ₹0?');">
+
+    <button
+        type="submit"
+        class="reset-budget-btn">
+
+        Reset Budget
+
+    </button>
+
+</form>
+
+</a>
+
+    </form>
+
+</div>
+          <div class="card average-card">
+    <h3>Average Expense</h3>
+    <p>₹{{ average_expense }}</p>
+</div>
+
+<div class="card total-card">
+    <h3>Monthly Budget</h3>
+    <p>₹{{ budget_amount }}</p>
+</div>
+
+<div class="card transaction-card">
+    <h3>Remaining Budget</h3>
+    <p>₹{{ remaining_budget }}</p>
+</div>
+
+<div class="card highest-card">
+    <h3>Budget Used</h3>
+    <p>₹{{ budget_used }}</p>
+</div>
+
+<div class="card progress-card">
+
+    <h3>Budget Progress</h3>
+
+    <div class="progress-bar">
+        <div
+            class="progress-fill {{ budget_status }}"
+            data-progress="{{ budget_percentage }}">
+        </div>
+    </div>
+
+    <p>
+        {{ "%.1f"|format(actual_budget_percentage) }}%
+    </p>
+
+    {% if budget_status == "healthy" %}
+
+    <p class="healthy-text">
+        ✅ Budget Healthy
+    </p>
+
+    {% elif budget_status == "warning" %}
+
+    <p class="warning-text">
+        ⚠ Warning: Approaching Budget
+    </p>
+
+    {% elif budget_status == "danger" %}
+
+    <p class="danger-text">
+        🚨 Budget Exceeded
+    </p>
+
+    {% endif %}
+
+</div>
+
+</div> <!-- End Dashboard -->
+
+<div class="budget-info-card">
+
+    <h2>📅 Current Budget Information</h2>
+
+    <div class="budget-info-grid">
+
+        <div class="budget-info-item">
+            <strong>Month</strong>
+            <p>{{ month_name }} {{ current_year }}</p>
         </div>
 
+        <div class="budget-info-item">
+            <strong>Status</strong>
+            <p>{{ budget_state }}</p>
+        </div>
+
+        <div class="budget-info-item">
+            <strong>Budget Amount</strong>
+            <p>₹{{ budget_amount }}</p>
+        </div>
+
+    </div>
+
+</div>
         <!-- ANALYTICS SECTION -->
 
         <div class="analytics-card">
