@@ -423,6 +423,33 @@
                 <h2><i data-lucide="plus-circle"></i> Add Transaction</h2>
                 <button class="drawer-close" onclick="closeTransactionDrawer()"><i data-lucide="x"></i></button>
             </div>
+
+            <!-- Receipt OCR Scanner Widget (Version 8) -->
+            <div class="ocr-scanner-widget">
+                <div class="ocr-dropzone" id="receiptDropzone">
+                    <div class="ocr-dropzone-inner">
+                        <i data-lucide="scan" class="ocr-scan-icon"></i>
+                        <p class="dropzone-text"><strong>⚡ Scan Receipt (OCR)</strong></p>
+                        <p class="dropzone-sub">Drag & drop image or click to browse</p>
+                    </div>
+                    <input type="file" id="receiptFileInput" accept="image/*" style="display: none;">
+                </div>
+                <div class="ocr-status-loader" id="ocrLoader" style="display: none;">
+                    <div class="ocr-spinner"></div>
+                    <span>Analyzing receipt parameters...</span>
+                </div>
+                <div class="ocr-helper-card" id="ocrHelperCard" style="display: none;">
+                    <div class="ocr-helper-icon"><i data-lucide="alert-circle"></i></div>
+                    <div class="ocr-helper-text">
+                        <h4>Tesseract Engine Missing</h4>
+                        <p>To enable receipt scanning, download Tesseract OCR for Windows. <a href="https://github.com/UB-Mannheim/tesseract/wiki" target="_blank" class="download-link-btn">Download Tesseract</a></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ocr-divider">
+                <span>OR FILL MANUALLY</span>
+            </div>
             
             <form id="ajaxAddExpenseForm" class="drawer-form">
                 <div class="form-group">

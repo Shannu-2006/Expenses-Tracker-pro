@@ -1,5 +1,7 @@
 import io
 import csv
+import os
+import re
 from datetime import datetime
 from flask import (
     Flask,
@@ -14,6 +16,24 @@ from flask import (
 )
 
 from flask_sqlalchemy import SQLAlchemy
+
+import pytesseract
+from PIL import Image
+
+# Configure Tesseract OCR binary path for Windows
+tesseract_found = False
+tesseract_paths = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Programs\Tesseract-OCR\tesseract.exe"),
+    os.path.join(os.environ.get("USERPROFILE", ""), r"AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
+    r"C:\Users\bhuky\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+]
+for path in tesseract_paths:
+    if os.path.exists(path):
+        pytesseract.pytesseract.tesseract_cmd = path
+        tesseract_found = True
+        break
 
 from werkzeug.security import (
     generate_password_hash,
@@ -764,6 +784,140 @@ def analytics():
         current_year=current_year,
         prev_month_name=datetime(prev_month_year, prev_month, 1).strftime("%B")
     )
+
+def parse_receipt_text(text):
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    merchant_name = "Unknown Merchant"
+    if lines:
+        for line in lines[:5]:
+            if len(line) > 3 and not re.match(r'^\d', line) and not any(kw in line.upper() for kw in ["TOTAL", "SUBTOTAL", "TAX", "ITEMS", "DATE", "TIME"]):
+                merchant_name = line
+                break
+        if merchant_name == "Unknown Merchant":
+            merchant_name = lines[0]
+            
+    amounts = []
+    all_numbers = re.findall(r'₹?\s*(\d+[\.,]\d{2})\b', text)
+    if not all_numbers:
+        all_numbers = re.findall(r'\b(\d+)\b', text)
+        
+    for num_str in all_numbers:
+        try:
+            val = float(num_str.replace(',', ''))
+            amounts.append(val)
+        except ValueError:
+            pass
+            
+    total_amount = 0
+    total_match = None
+    lines_upper = [l.upper() for l in lines]
+    for idx, line in enumerate(lines_upper):
+        if any(kw in line for kw in ["TOTAL", "GRAND TOTAL", "NET DUE", "TOTAL DUE", "AMOUNT DUE", "TOTAL AMOUNT", "PAID", "CASH DUE"]):
+            nums_in_line = re.findall(r'(\d+[\.,]\d{2})\b', line)
+            if not nums_in_line:
+                nums_in_line = re.findall(r'\b(\d+)\b', line)
+            if nums_in_line:
+                try:
+                    total_match = float(nums_in_line[-1].replace(',', ''))
+                    break
+                except ValueError:
+                    pass
+            if idx + 1 < len(lines_upper):
+                next_line = lines_upper[idx + 1]
+                nums_in_next = re.findall(r'(\d+[\.,]\d{2})\b', next_line)
+                if not nums_in_next:
+                    nums_in_next = re.findall(r'\b(\d+)\b', next_line)
+                if nums_in_next:
+                    try:
+                        total_match = float(nums_in_next[0].replace(',', ''))
+                        break
+                    except ValueError:
+                        pass
+                        
+    if total_match is not None:
+        total_amount = int(total_match)
+    elif amounts:
+        filtered_amounts = [a for a in amounts if a < 100000]
+        if filtered_amounts:
+            total_amount = int(max(filtered_amounts))
+            
+    date_match = re.search(r'\b(\d{4})[-/](\d{2})[-/](\d{2})\b', text)
+    date_str = ""
+    if date_match:
+        date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+    else:
+        date_match = re.search(r'\b(\d{2})[-/](\d{2})[-/](\d{4})\b', text)
+        if date_match:
+            date_str = f"{date_match.group(3)}-{date_match.group(2)}-{date_match.group(1)}"
+            
+    if not date_str:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        
+    category = "Other"
+    text_upper = text.upper()
+    keywords = {
+        "Food": ["FOOD", "CAFE", "COFFEE", "RESTAURANT", "BURGER", "PIZZA", "DINER", "BAKERY", "KITCHEN", "EATERY", "MCDONALD", "STARBUCKS", "GROCERY", "SUPERMARKET", "SWEETS"],
+        "Travel": ["TRAVEL", "UBER", "OLA", "CAB", "TAXI", "METRO", "TRAIN", "BUS", "FLIGHT", "AIRLINE", "PETROL", "GAS", "FUEL", "TOLL", "DIESEL"],
+        "Rent": ["RENT", "LEASE", "APARTMENT", "HOUSE", "MAINTENANCE", "PROPERTY"],
+        "Shopping": ["SHOPPING", "STORE", "MALL", "CLOTHES", "APPAREL", "SHOES", "AMAZON", "FLIPKART", "ELECTRONICS", "GADGET", "MALL"],
+        "Fun": ["FUN", "MOVIE", "CINEMA", "THEATRE", "CONCERT", "GAME", "PLAY", "BOWLING", "PARK", "EVENT", "CLUB", "BAR", "PUB"]
+    }
+    for cat, kws in keywords.items():
+        if any(kw in text_upper for kw in kws):
+            category = cat
+            break
+            
+    return {
+        "name": merchant_name[:50],
+        "amount": total_amount,
+        "category": category,
+        "date": date_str,
+        "notes": f"Scanned from receipt. Merchant: {merchant_name[:50]}"
+    }
+
+@app.route('/receipt/scan', methods=['POST'])
+def scan_receipt():
+    if 'user_id' not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+        
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return jsonify({
+            "success": False,
+            "error_type": "TESSERACT_NOT_FOUND",
+            "message": "Tesseract OCR engine is not installed or not configured in your system path. Please install it to enable receipt scanning."
+        }), 500
+
+    if 'receipt' not in request.files:
+        return jsonify({"success": False, "message": "No file uploaded"}), 400
+        
+    file = request.files['receipt']
+    if file.filename == '':
+        return jsonify({"success": False, "message": "Empty filename"}), 400
+        
+    temp_dir = os.path.join(os.path.dirname(__file__), "temp_uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    file_path = os.path.join(temp_dir, file.filename)
+    file.save(file_path)
+    
+    try:
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img)
+        parsed_data = parse_receipt_text(text)
+        os.remove(file_path)
+        return jsonify({
+            "success": True,
+            "data": parsed_data
+        })
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return jsonify({
+            "success": False,
+            "message": f"Error scanning receipt: {str(e)}"
+        }), 500
 
 @app.route('/', methods=['GET', 'POST'])
 def home():

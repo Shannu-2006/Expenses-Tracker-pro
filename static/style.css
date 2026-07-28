@@ -1918,3 +1918,147 @@ body {
     }
 }
 }
+
+/* ==========================================================================
+   Receipt OCR Scanner Styles (Version 8)
+   ========================================================================== */
+.ocr-scanner-widget {
+    margin-bottom: 1rem;
+}
+.ocr-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--background);
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.ocr-dropzone:hover,
+.ocr-dropzone.dragover {
+    border-color: var(--primary);
+    background-color: var(--primary-light);
+}
+.ocr-scan-icon {
+    width: 32px;
+    height: 32px;
+    color: var(--primary);
+    transition: var(--transition);
+}
+.ocr-dropzone:hover .ocr-scan-icon {
+    transform: scale(1.1);
+}
+.dropzone-text {
+    font-size: 0.85rem;
+    color: var(--text);
+    margin: 0;
+}
+.dropzone-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+.ocr-status-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 500;
+}
+.ocr-spinner {
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 2px solid rgba(99, 102, 241, 0.15);
+    border-top-color: var(--primary);
+    border-radius: var(--radius-full);
+    animation: spin 0.8s linear infinite;
+}
+.ocr-divider {
+    text-align: center;
+    margin: 1.25rem 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ocr-divider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--border);
+    z-index: 0;
+}
+.ocr-divider span {
+    background-color: var(--card-bg);
+    padding: 0 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    z-index: 1;
+    position: relative;
+}
+.ocr-helper-card {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--danger-light);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: var(--radius-md);
+    margin-top: 0.75rem;
+    align-items: flex-start;
+    animation: fadeInUp 0.3s ease-out;
+}
+.ocr-helper-icon {
+    color: var(--danger);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+}
+.ocr-helper-icon i {
+    width: 18px;
+    height: 18px;
+}
+.ocr-helper-text {
+    flex: 1;
+}
+.ocr-helper-text h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--danger);
+    margin: 0 0 0.15rem 0;
+}
+.ocr-helper-text p {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+}
+.download-link-btn {
+    display: inline-block;
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+}
+.download-link-btn:hover {
+    text-decoration: underline;
+}
+}

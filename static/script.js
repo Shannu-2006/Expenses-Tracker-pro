@@ -884,6 +884,98 @@ function ajaxResetBudget() {
     });
 }
 
+// OCR Receipt Scanner Interactions (Version 8)
+function initReceiptScanner() {
+    const dropzone = document.getElementById("receiptDropzone");
+    const fileInput = document.getElementById("receiptFileInput");
+    const loader = document.getElementById("ocrLoader");
+    const helperCard = document.getElementById("ocrHelperCard");
+
+    if (!dropzone || !fileInput) return;
+
+    // Trigger input browse window on click
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    // Drag-and-drop handlers
+    ["dragenter", "dragover"].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add("dragover");
+        }, false);
+    });
+
+    ["dragleave", "drop"].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove("dragover");
+        }, false);
+    });
+
+    dropzone.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files.length > 0) {
+            handleReceiptUpload(files[0]);
+        }
+    });
+
+    fileInput.addEventListener("change", () => {
+        if (fileInput.files && fileInput.files.length > 0) {
+            handleReceiptUpload(fileInput.files[0]);
+        }
+    });
+
+    function handleReceiptUpload(file) {
+        if (!file.type.startsWith("image/")) {
+            alert("Please upload a valid image receipt file (PNG, JPG, JPEG).");
+            return;
+        }
+
+        // Show OCR scanning loader, hide errors
+        loader.style.display = "flex";
+        helperCard.style.display = "none";
+
+        const formData = new FormData();
+        formData.append("receipt", file);
+
+        fetch("/receipt/scan", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            loader.style.display = "none";
+            fileInput.value = ""; // Clear input for future selections
+
+            if (data.success) {
+                // Populate forms
+                document.getElementById("expenseName").value = data.data.name || "";
+                document.getElementById("expenseAmount").value = data.data.amount || "";
+                document.getElementById("expenseCategory").value = data.data.category || "";
+                document.getElementById("expenseDate").value = data.data.date || new Date().toISOString().split('T')[0];
+                document.getElementById("expenseNotes").value = data.data.notes || "";
+                
+                showToast("Receipt parsed successfully! Review form fields.");
+            } else {
+                if (data.error_type === "TESSERACT_NOT_FOUND") {
+                    helperCard.style.display = "flex";
+                    showToast("Tesseract OCR not found. Review setup instructions.");
+                } else {
+                    showToast("Error scanning: " + (data.message || "Unknown error"));
+                }
+            }
+        })
+        .catch(err => {
+            loader.style.display = "none";
+            fileInput.value = "";
+            console.error("OCR Scanner Error:", err);
+            showToast("Network error parsing receipt.");
+        });
+    }
+}
+
 // Window Load Handler
 document.addEventListener("DOMContentLoaded", () => {
     loadSavedTheme();
@@ -902,6 +994,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setupAjaxAddExpense();
     setupAjaxEditExpense();
     setupAjaxBudgetController();
+    
+    // Hook OCR receipt scanner
+    initReceiptScanner();
     
     // Auto-dismiss standard Flash message Toast on load if visible
     const stdToast = document.getElementById("toastMessage");
