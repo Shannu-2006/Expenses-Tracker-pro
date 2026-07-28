@@ -79,6 +79,12 @@ class User(db.Model):
         db.String(255),
         nullable=False
     )
+
+    threshold = db.Column(
+        db.Integer,
+        default=80,
+        nullable=False
+    )
 class Budget(db.Model):
     id = db.Column(
         db.Integer,
@@ -98,6 +104,11 @@ class Budget(db.Model):
     year = db.Column(
         db.Integer,
         nullable=False
+    )
+
+    category = db.Column(
+        db.String(50),
+        nullable=True
     )
 
     user_id = db.Column(
@@ -233,14 +244,27 @@ def delete_budget():
     if 'user_id' not in session:
         return redirect('/login')
 
+    category = request.args.get('category', '')
+    if category == 'global':
+        category = ''
+
     current_month = datetime.now().month
     current_year = datetime.now().year
 
-    budget = Budget.query.filter_by(
-        user_id=session['user_id'],
-        month=current_month,
-        year=current_year
-    ).first()
+    if category:
+        budget = Budget.query.filter_by(
+            user_id=session['user_id'],
+            month=current_month,
+            year=current_year,
+            category=category
+        ).first()
+    else:
+        budget = Budget.query.filter(
+            Budget.user_id == session['user_id'],
+            Budget.month == current_month,
+            Budget.year == current_year,
+            (Budget.category == None) | (Budget.category == '')
+        ).first()
 
     if budget:
         db.session.delete(budget)
@@ -248,7 +272,7 @@ def delete_budget():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 "success": True,
-                "message": "Budget deleted successfully!",
+                "message": "Budget limit deleted successfully!",
                 "stats": get_user_stats(session['user_id'])
             })
         flash("Budget deleted successfully!")
@@ -256,10 +280,10 @@ def delete_budget():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 "success": False,
-                "message": "No budget found for this month.",
+                "message": "No budget found.",
                 "stats": get_user_stats(session['user_id'])
             })
-        flash("No budget found for this month.")
+        flash("No budget found.")
 
     return redirect('/')
 
@@ -268,14 +292,27 @@ def reset_budget():
     if 'user_id' not in session:
         return redirect('/login')
 
+    category = request.args.get('category', '')
+    if category == 'global':
+        category = ''
+
     current_month = datetime.now().month
     current_year = datetime.now().year
 
-    budget = Budget.query.filter_by(
-        user_id=session['user_id'],
-        month=current_month,
-        year=current_year
-    ).first()
+    if category:
+        budget = Budget.query.filter_by(
+            user_id=session['user_id'],
+            month=current_month,
+            year=current_year,
+            category=category
+        ).first()
+    else:
+        budget = Budget.query.filter(
+            Budget.user_id == session['user_id'],
+            Budget.month == current_month,
+            Budget.year == current_year,
+            (Budget.category == None) | (Budget.category == '')
+        ).first()
 
     if budget:
         budget.amount = 0
@@ -291,10 +328,10 @@ def reset_budget():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 "success": False,
-                "message": "No budget found for this month.",
+                "message": "No budget found.",
                 "stats": get_user_stats(session['user_id'])
             })
-        flash("No budget found for this month.")
+        flash("No budget found.")
 
     return redirect('/')
 
@@ -304,15 +341,27 @@ def set_budget():
         return redirect('/login')
 
     amount = int(request.form['budget'])
+    category = request.form.get('budget_category', '')
+    if category == 'global':
+        category = ''
 
     current_month = datetime.now().month
     current_year = datetime.now().year
 
-    budget = Budget.query.filter_by(
-        user_id=session['user_id'],
-        month=current_month,
-        year=current_year
-    ).first()
+    if category:
+        budget = Budget.query.filter_by(
+            user_id=session['user_id'],
+            month=current_month,
+            year=current_year,
+            category=category
+        ).first()
+    else:
+        budget = Budget.query.filter(
+            Budget.user_id == session['user_id'],
+            Budget.month == current_month,
+            Budget.year == current_year,
+            (Budget.category == None) | (Budget.category == '')
+        ).first()
 
     if budget:
         budget.amount = amount
@@ -321,20 +370,28 @@ def set_budget():
             amount=amount,
             month=current_month,
             year=current_year,
+            category=category if category else None,
             user_id=session['user_id']
         )
         db.session.add(budget)
 
     db.session.commit()
 
+    # Trigger threshold warnings check immediately
+    try:
+        stats = get_user_stats(session['user_id'])
+        check_budget_thresholds(session['user_id'], stats['total'], stats['budget_amount'])
+    except Exception as e_thresh:
+        print("Threshold warning check error on set budget:", e_thresh)
+
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({
             "success": True,
-            "message": "Budget Saved Successfully!",
+            "message": "Budget limit saved successfully!",
             "stats": get_user_stats(session['user_id'])
         })
 
-    flash("Budget Saved Successfully!")
+    flash("Budget updated successfully!")
     return redirect('/')
 
 # Helper function to compile full monthly analytics statistics in JSON
@@ -342,15 +399,28 @@ def get_user_stats(user_id):
     current_month = datetime.now().month
     current_year = datetime.now().year
 
-    budget = Budget.query.filter_by(
-        user_id=user_id,
-        month=current_month,
-        year=current_year
+    user = User.query.get(user_id)
+    threshold = user.threshold if user else 80
+
+    # Fetch global budget (category is None or empty)
+    budget = Budget.query.filter(
+        Budget.user_id == user_id,
+        Budget.month == current_month,
+        Budget.year == current_year,
+        (Budget.category == None) | (Budget.category == '')
     ).first()
 
-    budget_amount = 0
-    if budget:
-        budget_amount = budget.amount
+    budget_amount = budget.amount if budget else 0
+
+    # Fetch category budgets
+    cat_budgets_list = Budget.query.filter(
+        Budget.user_id == user_id,
+        Budget.month == current_month,
+        Budget.year == current_year,
+        Budget.category != None,
+        Budget.category != ''
+    ).all()
+    category_budgets = {cb.category: cb.amount for cb in cat_budgets_list}
 
     expenses = Expense.query.filter_by(
         user_id=user_id
@@ -358,11 +428,8 @@ def get_user_stats(user_id):
         Expense.id.desc()
     ).all()
 
-    total = sum(expense.amount for expense in expenses)
-    transaction_count = len(expenses)
-    highest_expense = max([expense.amount for expense in expenses], default=0)
-    average_expense = total // transaction_count if transaction_count > 0 else 0
-
+    total = 0
+    current_month_total = 0
     category_totals = {
         "Food": 0,
         "Travel": 0,
@@ -373,11 +440,19 @@ def get_user_stats(user_id):
     }
 
     for expense in expenses:
-        if expense.category in category_totals:
-            category_totals[expense.category] += expense.amount
+        total += expense.amount
+        if expense.date:
+            try:
+                dt = datetime.strptime(expense.date, '%Y-%m-%d')
+                if dt.year == current_year and dt.month == current_month:
+                    current_month_total += expense.amount
+                    if expense.category in category_totals:
+                        category_totals[expense.category] += expense.amount
+            except ValueError:
+                pass
 
-    budget_used = total
-    remaining_budget = budget_amount - total
+    budget_used = current_month_total
+    remaining_budget = budget_amount - budget_used
     if remaining_budget < 0:
         remaining_budget = 0
 
@@ -390,7 +465,7 @@ def get_user_stats(user_id):
         budget_percentage = min(actual_budget_percentage, 100)
         if actual_budget_percentage >= 100:
             budget_status = "danger"
-        elif actual_budget_percentage >= 80:
+        elif actual_budget_percentage >= threshold:
             budget_status = "warning"
         else:
             budget_status = "healthy"
@@ -411,10 +486,11 @@ def get_user_stats(user_id):
     } for e in expenses]
 
     return {
-        "total": total,
-        "transaction_count": transaction_count,
-        "highest_expense": highest_expense,
-        "average_expense": average_expense,
+        "total": budget_used,
+        "all_time_total": total,
+        "transaction_count": len(expenses),
+        "highest_expense": max([e.amount for e in expenses], default=0),
+        "average_expense": budget_used // len(expenses) if len(expenses) > 0 else 0,
         "budget_amount": budget_amount,
         "budget_used": budget_used,
         "remaining_budget": remaining_budget,
@@ -425,6 +501,8 @@ def get_user_stats(user_id):
         "current_year": current_year,
         "budget_state": budget_state,
         "category_totals": category_totals,
+        "category_budgets": category_budgets,
+        "threshold": threshold,
         "expenses": expense_list
     }
 
@@ -972,25 +1050,26 @@ def send_email_async(to_email, subject, body_html):
 
 # Budget threshold warning and email alerts checker helper
 def check_budget_thresholds(user_id, total_spent, budget_amount):
-    if budget_amount <= 0:
+    user = User.query.get(user_id)
+    if not user:
         return
         
+    threshold_percent = user.threshold if user.threshold else 80
     current_month = datetime.now().month
     current_year = datetime.now().year
-    percentage = (total_spent / budget_amount) * 100
     
-    # 1. 100% Exceeded alert
-    if percentage >= 100:
-        tag_100 = f"budget_exceeded_100_{current_year}_{current_month}"
-        exists = Notification.query.filter_by(user_id=user_id, identifier=tag_100).first()
-        if not exists:
-            readable_msg = f"🚨 Danger: Monthly budget limit exceeded! Spent ₹{total_spent} of ₹{budget_amount} ({percentage:.1f}%)."
-            notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_100)
-            db.session.add(notif)
-            db.session.commit()
-            
-            user = User.query.get(user_id)
-            if user:
+    # 1. Check Global Budget Thresholds
+    if budget_amount > 0:
+        percentage = (total_spent / budget_amount) * 100
+        if percentage >= 100:
+            tag_100 = f"budget_exceeded_100_{current_year}_{current_month}"
+            exists = Notification.query.filter_by(user_id=user_id, identifier=tag_100).first()
+            if not exists:
+                readable_msg = f"🚨 Danger: Monthly budget limit exceeded! Spent ₹{total_spent} of ₹{budget_amount} ({percentage:.1f}%)."
+                notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_100)
+                db.session.add(notif)
+                db.session.commit()
+                
                 subject = f"🚨 URGENT: Budget Limit Exceeded — ExpenseTracker Pro"
                 body_html = f"""
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
@@ -1006,19 +1085,16 @@ def check_budget_thresholds(user_id, total_spent, budget_amount):
                 </div>
                 """
                 send_email_async(user.email, subject, body_html)
+                    
+        elif percentage >= threshold_percent:
+            tag_threshold = f"budget_warning_{threshold_percent}_{current_year}_{current_month}"
+            exists = Notification.query.filter_by(user_id=user_id, identifier=tag_threshold).first()
+            if not exists:
+                readable_msg = f"⚠️ Warning: Spent {percentage:.1f}% of your monthly budget (₹{total_spent} of ₹{budget_amount})."
+                notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_threshold)
+                db.session.add(notif)
+                db.session.commit()
                 
-    # 2. 80% Warning alert
-    elif percentage >= 80:
-        tag_80 = f"budget_warning_80_{current_year}_{current_month}"
-        exists = Notification.query.filter_by(user_id=user_id, identifier=tag_80).first()
-        if not exists:
-            readable_msg = f"⚠️ Warning: Spent {percentage:.1f}% of your monthly budget (₹{total_spent} of ₹{budget_amount})."
-            notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_80)
-            db.session.add(notif)
-            db.session.commit()
-            
-            user = User.query.get(user_id)
-            if user:
                 subject = f"⚠️ WARNING: Budget Approaching Limit — ExpenseTracker Pro"
                 body_html = f"""
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
@@ -1034,6 +1110,85 @@ def check_budget_thresholds(user_id, total_spent, budget_amount):
                 </div>
                 """
                 send_email_async(user.email, subject, body_html)
+
+    # 2. Check Category Budgets Thresholds (Option B)
+    try:
+        cat_budgets = Budget.query.filter(
+            Budget.user_id == user_id,
+            Budget.month == current_month,
+            Budget.year == current_year,
+            Budget.category != None,
+            Budget.category != ''
+        ).all()
+        
+        if cat_budgets:
+            expenses = Expense.query.filter_by(user_id=user_id).all()
+            cat_totals = {}
+            for e in expenses:
+                if e.date:
+                    try:
+                        dt = datetime.strptime(e.date, '%Y-%m-%d')
+                        if dt.year == current_year and dt.month == current_month:
+                            cat_totals[e.category] = cat_totals.get(e.category, 0) + e.amount
+                    except ValueError:
+                        pass
+                        
+            for cb in cat_budgets:
+                spent = cat_totals.get(cb.category, 0)
+                cb_amount = cb.amount
+                if cb_amount <= 0:
+                    continue
+                cat_pct = (spent / cb_amount) * 100
+                
+                if cat_pct >= 100:
+                    tag_cat_100 = f"cat_exceeded_100_{cb.category}_{current_year}_{current_month}"
+                    exists = Notification.query.filter_by(user_id=user_id, identifier=tag_cat_100).first()
+                    if not exists:
+                        readable_msg = f"🚨 Category Alert: Monthly budget for {cb.category} exceeded! Spent ₹{spent} of ₹{cb_amount} ({cat_pct:.1f}%)."
+                        notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_cat_100)
+                        db.session.add(notif)
+                        db.session.commit()
+                        
+                        subject = f"🚨 URGENT: {cb.category} Budget Limit Exceeded — ExpenseTracker Pro"
+                        body_html = f"""
+                        <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+                            <h2 style="color: #ef4444;">{cb.category} Budget Exceeded Alert</h2>
+                            <p>Hello <strong>{user.username}</strong>,</p>
+                            <p>This is an automated alert from your ExpenseTracker Pro ledger.</p>
+                            <p style="background: #fef2f2; border: 1px solid #fee2e2; padding: 15px; border-radius: 8px; font-size: 16px;">
+                                🚨 You have exceeded your monthly budget for the category <strong>{cb.category}</strong>. You have spent <strong>₹{spent}</strong> of your monthly limit of <strong>₹{cb_amount}</strong>.
+                            </p>
+                            <br>
+                            <p>Regards,<br>ExpenseTracker Pro Team</p>
+                        </div>
+                        """
+                        send_email_async(user.email, subject, body_html)
+                        
+                elif cat_pct >= threshold_percent:
+                    tag_cat_warn = f"cat_warning_{threshold_percent}_{cb.category}_{current_year}_{current_month}"
+                    exists = Notification.query.filter_by(user_id=user_id, identifier=tag_cat_warn).first()
+                    if not exists:
+                        readable_msg = f"⚠️ Category Warning: Spent {cat_pct:.1f}% of your monthly {cb.category} budget (₹{spent} of ₹{cb_amount})."
+                        notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_cat_warn)
+                        db.session.add(notif)
+                        db.session.commit()
+                        
+                        subject = f"⚠️ WARNING: {cb.category} Budget Approaching Limit"
+                        body_html = f"""
+                        <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+                            <h2 style="color: #eab308;">{cb.category} Budget Threshold Warning</h2>
+                            <p>Hello <strong>{user.username}</strong>,</p>
+                            <p>This is an automated warning from your ExpenseTracker Pro ledger.</p>
+                            <p style="background: #fefcbf; border: 1px solid #fef08a; padding: 15px; border-radius: 8px; font-size: 16px;">
+                                ⚠️ You have spent <strong>{cat_pct:.1f}%</strong> of your monthly budget limit for the category <strong>{cb.category}</strong>. You have spent <strong>₹{spent}</strong> of your set monthly limit of <strong>₹{cb_amount}</strong>.
+                            </p>
+                            <br>
+                            <p>Regards,<br>ExpenseTracker Pro Team</p>
+                        </div>
+                        """
+                        send_email_async(user.email, subject, body_html)
+    except Exception as e_cat_thresh:
+        print("Category threshold check error:", e_cat_thresh)
 
 # API - Fetch recent notifications list
 @app.route('/notifications')
@@ -1148,12 +1303,10 @@ def email_summary():
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-
     if 'user_id' not in session:
         return redirect('/login')
 
     if request.method == 'POST':
-
         name = request.form['name']
         amount = request.form['amount']
         category = request.form['category']
@@ -1177,23 +1330,8 @@ def home():
 
         # Check budget thresholds warnings (Version 9)
         try:
-            current_month = datetime.now().month
-            current_year = datetime.now().year
-            budget = Budget.query.filter_by(user_id=session['user_id'], month=current_month, year=current_year).first()
-            budget_amount = budget.amount if budget else 0
-            
-            # Recalculate current month total spent
-            expenses = Expense.query.filter_by(user_id=session['user_id']).all()
-            current_month_total = 0
-            for e in expenses:
-                if e.date:
-                    try:
-                        dt = datetime.strptime(e.date, '%Y-%m-%d')
-                        if dt.year == current_year and dt.month == current_month:
-                            current_month_total += e.amount
-                    except ValueError:
-                        pass
-            check_budget_thresholds(session['user_id'], current_month_total, budget_amount)
+            stats = get_user_stats(session['user_id'])
+            check_budget_thresholds(session['user_id'], stats['total'], stats['budget_amount'])
         except Exception as e_thresh:
             print("Threshold warning check error:", e_thresh)
 
@@ -1205,154 +1343,35 @@ def home():
             })
 
         flash("Expense added successfully!")
-
         return redirect('/')
 
-    # -----------------------------
-    # Get Current Month Budget
-    # -----------------------------
+    stats = get_user_stats(session['user_id'])
 
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-
-    budget = Budget.query.filter_by(
-        user_id=session['user_id'],
-        month=current_month,
-        year=current_year
-    ).first()
-
-    budget_amount = 0
-
-    if budget:
-        budget_amount = budget.amount
-
-    # -----------------------------
-    # Get Expenses
-    # -----------------------------
-
-    expenses = Expense.query.filter_by(
-        user_id=session['user_id']
-    ).order_by(
-        Expense.id.desc()
-    ).all()
-
-    total = sum(
-        expense.amount
-        for expense in expenses
-    )
-
-    transaction_count = len(expenses)
-
-    highest_expense = max(
-        [expense.amount for expense in expenses],
-        default=0
-    )
-
-    average_expense = (
-        total // transaction_count
-        if transaction_count > 0
-        else 0
-    )
-
-    category_totals = {
-        "Food": 0,
-        "Travel": 0,
-        "Rent": 0,
-        "Shopping": 0,
-        "Fun": 0,
-        "Other": 0
-    }
-
-    for expense in expenses:
-
-        if expense.category in category_totals:
-            category_totals[
-                expense.category
-            ] += expense.amount
-
-    highest_category = max(
-        category_totals,
-        key=category_totals.get
-    )
-
-    highest_category_amount = (
-        category_totals[highest_category]
-    )
-
-    monthly_summary = {
-        "total": total,
-        "transactions": transaction_count,
-        "highest_expense": highest_expense,
-        "average_expense": average_expense
-        
-    }
-    budget_used = total
-
-    remaining_budget = budget_amount - total
-
-    if remaining_budget < 0:
-        remaining_budget = 0
-
-       # -----------------------------
-    # Budget Progress Percentage
-    # -----------------------------
-
-    actual_budget_percentage = 0
-    budget_percentage = 0
-    budget_status = "healthy"
-
-    if budget_amount > 0:
-
-        actual_budget_percentage = (
-            budget_used / budget_amount
-        ) * 100
-
-        budget_percentage = min(
-            actual_budget_percentage,
-            100
-        )
-
-        if actual_budget_percentage >= 100:
-            budget_status = "danger"
-
-        elif actual_budget_percentage >= 80:
-            budget_status = "warning"
-
-        else:
-            budget_status = "healthy"
-
-    # -----------------------------
-    # Current Budget Information
-    # -----------------------------
-
-    month_name = datetime.now().strftime("%B")
-    current_year = datetime.now().year
-
-    if budget_amount > 0:
-        budget_state = "Active"
-    else:
-        budget_state = "No Budget Set"
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
 
     return render_template(
         'index.html',
-        expenses=expenses,
-        total=total,
-        transaction_count=transaction_count,
-        highest_expense=highest_expense,
-        average_expense=average_expense,
-        category_totals=category_totals,
-        highest_category=highest_category,
-        highest_category_amount=highest_category_amount,
-        monthly_summary=monthly_summary,
-        budget_amount=budget_amount,
-        budget_used=budget_used,
-        remaining_budget=remaining_budget,
-        budget_percentage=budget_percentage,
-        budget_status=budget_status,
-        actual_budget_percentage=actual_budget_percentage,
-        month_name=month_name,
-        current_year=current_year,
-        budget_state=budget_state
+        expenses=stats['expenses'],
+        total=stats['total'],
+        all_time_total=stats['all_time_total'],
+        transaction_count=stats['transaction_count'],
+        highest_expense=stats['highest_expense'],
+        average_expense=stats['average_expense'],
+        category_totals=stats['category_totals'],
+        category_budgets=stats['category_budgets'],
+        budget_amount=stats['budget_amount'],
+        budget_used=stats['budget_used'],
+        remaining_budget=stats['remaining_budget'],
+        budget_percentage=stats['budget_percentage'],
+        budget_status=stats['budget_status'],
+        actual_budget_percentage=stats['actual_budget_percentage'],
+        month_name=stats['month_name'],
+        current_year=stats['current_year'],
+        budget_state=stats['budget_state']
     )
 @app.route('/update/<int:id>', methods=['POST'])
 def update(id):
@@ -1439,6 +1458,79 @@ def delete(id):
     return redirect('/')
 
 
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    user = User.query.get(session['user_id'])
+    if not user:
+        return redirect('/login')
+        
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'profile':
+            username = request.form.get('username')
+            email = request.form.get('email')
+            
+            existing_user = User.query.filter(User.username == username, User.id != user.id).first()
+            if existing_user:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({"success": False, "message": "Username is already taken."})
+                flash("Username is already taken.", "error")
+                return redirect('/settings')
+                
+            existing_email = User.query.filter(User.email == email, User.id != user.id).first()
+            if existing_email:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({"success": False, "message": "Email address is already in use."})
+                flash("Email address is already in use.", "error")
+                return redirect('/settings')
+                
+            user.username = username
+            user.email = email
+            db.session.commit()
+            
+            session['username'] = username
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({"success": True, "message": "Account profile details updated successfully!"})
+            flash("Profile updated successfully!")
+            
+        elif action == 'security':
+            current_pwd = request.form.get('current_password')
+            new_pwd = request.form.get('new_password')
+            
+            if not check_password_hash(user.password, current_pwd):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({"success": False, "message": "Incorrect current password."})
+                flash("Incorrect current password.", "error")
+                return redirect('/settings')
+                
+            user.password = generate_password_hash(new_pwd)
+            db.session.commit()
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({"success": True, "message": "Account password updated successfully!"})
+            flash("Password updated successfully!")
+            
+        elif action == 'preferences':
+            threshold = int(request.form.get('threshold', 80))
+            user.threshold = threshold
+            db.session.commit()
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({"success": True, "message": "Notification preferences updated successfully!"})
+            flash("Notification preferences updated successfully!")
+            
+        return redirect('/settings')
+        
+    return render_template(
+        'settings.html',
+        user=user
+    )
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -1449,6 +1541,17 @@ if __name__ == '__main__':
                 db.session.execute(db.text("ALTER TABLE expense ADD COLUMN date TEXT"))
             if 'notes' not in columns:
                 db.session.execute(db.text("ALTER TABLE expense ADD COLUMN notes TEXT"))
+            
+            # Budget table category migration (Option B)
+            budget_columns = [c['name'] for c in inspector.get_columns('budget')]
+            if 'category' not in budget_columns:
+                db.session.execute(db.text("ALTER TABLE budget ADD COLUMN category TEXT"))
+                
+            # User table threshold migration (Option B)
+            user_columns = [c['name'] for c in inspector.get_columns('user')]
+            if 'threshold' not in user_columns:
+                db.session.execute(db.text("ALTER TABLE user ADD COLUMN threshold INTEGER DEFAULT 80"))
+                
             db.session.commit()
         except Exception as e:
             print("Auto-migration result:", e)

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — Expense Tracker Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body class="app-shell">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p>Syncing preferences...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Application Shell Container -->
+    <div class="app-layout">
+        
+        <!-- Collapsible Left Sidebar Navigation Drawer -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-brand">
+                <span class="brand-logo"><i data-lucide="gem"></i></span>
+                <span class="brand-text">ExpenseTracker <span class="badge-pro">PRO</span></span>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li>
+                        <a href="/">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/reports" onclick="showLoader()">
+                            <i data-lucide="file-spreadsheet"></i>
+                            <span>Reports</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/analytics" onclick="showLoader()">
+                            <i data-lucide="trending-up"></i>
+                            <span>Analytics</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="/settings" onclick="showLoader()">
+                            <i data-lucide="settings"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn-sidebar" onclick="toggleDarkMode()" aria-label="Toggle dark mode">
+                    <i data-lucide="moon" class="theme-icon-svg"></i>
+                    <span class="theme-text">Dark Mode</span>
+                </button>
+                
+                <div class="sidebar-user">
+                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <div class="user-info">
+                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Workspace Panel -->
+        <div class="main-workspace">
+            
+            <!-- Top Header Toolbar strip -->
+            <header class="workspace-header">
+                <div class="header-left">
+                    <button class="sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation Sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-titles">
+                        <h1>Account Settings</h1>
+                        <p class="text-muted">Manage your profile credentials, secure your account password, and adjust alert thresholds.</p>
+                    </div>
+                </div>
+                
+                <div class="header-actions">
+                    <!-- Notifications Bell Dropdown -->
+                    <div class="header-notifications-wrapper">
+                        <button class="notifications-bell-btn" id="notifBellBtn" onclick="toggleNotificationsDropdown(event)" aria-label="Notifications Center">
+                            <i data-lucide="bell"></i>
+                            <span class="bell-badge" id="notifBadge" style="display: none;">0</span>
+                        </button>
+                        <div class="notifications-dropdown-panel" id="notifDropdown">
+                            <div class="notif-header">
+                                <h3>Notifications</h3>
+                                <button onclick="ajaxReadAllNotifications()" class="btn-read-all border-none bg-none cursor-pointer">Mark all read</button>
+                            </div>
+                            <div class="notif-body" id="notifListContainer">
+                                <div class="notif-empty-state">No new notifications</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Scrollable Workspace content -->
+            <div class="workspace-content">
+                
+                <div class="settings-grid">
+                    
+                    <!-- Left: Profile and Security details -->
+                    <div class="settings-main">
+                        
+                        <!-- Account Details Panel -->
+                        <section class="panel-card animate-fade-in">
+                            <div class="panel-header">
+                                <h2><i data-lucide="user" class="header-icon-inline"></i> Account Profile Details</h2>
+                            </div>
+                            <div class="panel-body">
+                                <form id="profileForm" method="POST" action="/settings" class="settings-form">
+                                    <input type="hidden" name="action" value="profile">
+                                    
+                                    <div class="input-group">
+                                        <label for="username">Display Username</label>
+                                        <input type="text" id="username" name="username" value="{{ user.username }}" required>
+                                    </div>
+                                    
+                                    <div class="input-group">
+                                        <label for="email">Email Address</label>
+                                        <input type="email" id="email" name="email" value="{{ user.email }}" required>
+                                        <small class="help-text">Used for budget threshold warnings and ledger summary dispatches.</small>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary">Save Profile</button>
+                                </form>
+                            </div>
+                        </section>
+
+                        <!-- Change Password Panel -->
+                        <section class="panel-card animate-fade-in" style="margin-top: 1.5rem;">
+                            <div class="panel-header">
+                                <h2><i data-lucide="shield-check" class="header-icon-inline"></i> Change Account Password</h2>
+                            </div>
+                            <div class="panel-body">
+                                <form id="securityForm" method="POST" action="/settings" class="settings-form">
+                                    <input type="hidden" name="action" value="security">
+                                    
+                                    <div class="input-group">
+                                        <label for="current_password">Current Password</label>
+                                        <input type="password" id="current_password" name="current_password" required>
+                                    </div>
+                                    
+                                    <div class="input-group">
+                                        <label for="new_password">New Password</label>
+                                        <input type="password" id="new_password" name="new_password" required minlength="6">
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-outline">Change Password</button>
+                                </form>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- Right: Preferences panel -->
+                    <div class="settings-sidebar">
+                        
+                        <!-- Notifications Preferences Panel -->
+                        <section class="panel-card animate-fade-in">
+                            <div class="panel-header">
+                                <h2><i data-lucide="bell-ring" class="header-icon-inline"></i> Alert Preferences</h2>
+                            </div>
+                            <div class="panel-body">
+                                <form id="preferencesForm" method="POST" action="/settings" class="settings-form">
+                                    <input type="hidden" name="action" value="preferences">
+                                    
+                                    <div class="input-group">
+                                        <label for="thresholdInput">Budget Warning Threshold (%)</label>
+                                        <div class="range-slider-wrapper">
+                                            <input type="range" id="thresholdInput" name="threshold" min="50" max="95" step="5" value="{{ user.threshold or 80 }}" oninput="updateThresholdLabel(this.value)">
+                                            <span class="slider-val-badge" id="thresholdValBadge">{{ user.threshold or 80 }}%</span>
+                                        </div>
+                                        <small class="help-text">Receive an alert when your monthly spending reaches this percentage of your budget limit.</small>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-primary btn-block">Save Preferences</button>
+                                </form>
+                            </div>
+                        </section>
+
+                        <!-- System Card -->
+                        <section class="panel-card info-card animate-fade-in" style="margin-top: 1.5rem; background: var(--card-bg-gradient);">
+                            <div class="panel-body text-center">
+                                <div class="premium-badge-icon"><i data-lucide="gem"></i></div>
+                                <h3>Expense Tracker Pro</h3>
+                                <p class="text-muted text-sm">Version 9.5 (Active Development)</p>
+                                <hr class="divider">
+                                <p class="text-sm">Database: SQLite Local Sandbox<br>Mail Client: Async SMTP dispatch</p>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateThresholdLabel(val) {
+            document.getElementById('thresholdValBadge').textContent = val + '%';
+        }
+    </script>
+</body>
+</html>

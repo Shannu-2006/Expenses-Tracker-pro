@@ -51,6 +51,12 @@
                             <span>Analytics</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="/settings" onclick="showLoader()">
+                            <i data-lucide="settings"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
                 </ul>
             </nav>
 
@@ -302,17 +308,56 @@
                                 <h2><i data-lucide="sliders" class="header-icon-inline"></i> Budget Settings</h2>
                             </div>
                             <div class="panel-body">
-                                <form id="budgetSettingForm" class="styled-form inline-budget-form">
+                                <form id="budgetSettingForm" class="styled-form">
                                     <div class="input-group">
-                                        <label for="budget">Set Monthly Budget (₹)</label>
+                                        <label for="budgetCategorySelect">Budget Target Scope</label>
+                                        <select id="budgetCategorySelect" name="budget_category" class="styled-select" style="margin-bottom: 0.75rem;" onchange="onBudgetCategoryChange()">
+                                            <option value="global">Overall Global Budget</option>
+                                            <option value="Food">Category: Food</option>
+                                            <option value="Travel">Category: Travel</option>
+                                            <option value="Rent">Category: Rent</option>
+                                            <option value="Shopping">Category: Shopping</option>
+                                            <option value="Fun">Category: Fun</option>
+                                            <option value="Other">Category: Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group">
+                                        <label for="budget">Set Budget Amount (₹)</label>
                                         <div class="input-wrapper-btn">
-                                            <input type="number" id="budget" name="budget" placeholder="Enter Monthly Budget" value="{{ budget_amount }}" required>
+                                            <input type="number" id="budget" name="budget" placeholder="Enter Budget Limit" value="{{ budget_amount }}" required>
                                             <button type="submit" class="btn btn-primary">Save</button>
                                         </div>
                                     </div>
                                 </form>
                                 <div id="budgetResetAction" style="margin-top: 1rem; {% if budget_amount == 0 %}display: none;{% endif %}">
-                                    <button onclick="ajaxResetBudget()" class="btn btn-outline btn-block">Reset Budget to ₹0</button>
+                                    <button onclick="ajaxResetBudget()" class="btn btn-outline btn-block" id="budgetResetBtn">Reset Budget to ₹0</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Budgets list card -->
+                        <div class="panel-card category-budgets-panel animate-fade-in" style="margin-top: 1.5rem;">
+                            <div class="panel-header">
+                                <h2><i data-lucide="pie-chart" class="header-icon-inline"></i> Category Budgets</h2>
+                            </div>
+                            <div class="panel-body" id="categoryBudgetsContainer">
+                                <div class="category-budgets-list" id="categoryBudgetsList">
+                                    {% for cat, amt in category_budgets.items() %}
+                                    <div class="cat-budget-item" id="cat-budget-{{ cat }}">
+                                        <div class="cat-budget-info">
+                                            <span class="cat-name"><strong>{{ cat }}</strong></span>
+                                            <span class="cat-values">₹{{ category_totals.get(cat, 0) }} of ₹{{ amt }}</span>
+                                        </div>
+                                        <div class="cat-progress-bg">
+                                            <div class="cat-progress-fill {% if category_totals.get(cat, 0) >= amt %}danger{% elif category_totals.get(cat, 0) >= amt * 0.8 %}warning{% else %}healthy{% endif %}" 
+                                                 style="width: {% if amt > 0 %}{% if (category_totals.get(cat, 0) / amt * 100) < 100 %}{{ (category_totals.get(cat, 0) / amt * 100) }}{% else %}100{% endif %}{% else %}0{% endif %}%"></div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="cat-budget-empty" id="catBudgetEmptyPlaceholder">
+                                        <p class="text-muted text-sm">No category-specific budgets set yet.</p>
+                                    </div>
+                                    {% endfor %}
                                 </div>
                             </div>
                         </div>

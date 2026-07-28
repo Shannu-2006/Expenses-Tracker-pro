@@ -533,6 +533,9 @@ function renderCharts() {
 
 // Re-compile HTML values and update the Dashboard elements dynamically
 function updateDOMStats(stats) {
+    // Cache the latest stats data dynamically (Option B)
+    currentStatsData = stats;
+
     // 1. Update KPI Values
     const kpiTotal = document.getElementById("kpiTotal");
     if (kpiTotal) kpiTotal.textContent = "₹" + stats.total;
@@ -598,14 +601,52 @@ function updateDOMStats(stats) {
         }
     }
 
-    // Update Reset button display state
+    // Update Reset button display state and sync input fields
     const budgetResetAction = document.getElementById("budgetResetAction");
-    const budgetInput = document.getElementById("budget");
-    if (budgetInput) {
-        budgetInput.value = stats.budget_amount;
-    }
     if (budgetResetAction) {
         budgetResetAction.style.display = stats.budget_amount > 0 ? "block" : "none";
+    }
+    
+    // Sync current budget category selection value
+    onBudgetCategoryChange();
+
+    // Re-render Category budget items list (Option B)
+    const categoryBudgetsList = document.getElementById("categoryBudgetsList");
+    if (categoryBudgetsList) {
+        let listHtml = "";
+        const catKeys = Object.keys(stats.category_budgets);
+        if (catKeys.length === 0) {
+            listHtml = `
+                <div class="cat-budget-empty" id="catBudgetEmptyPlaceholder">
+                    <p class="text-muted text-sm">No category-specific budgets set yet.</p>
+                </div>`;
+        } else {
+            catKeys.forEach(cat => {
+                const limit = stats.category_budgets[cat];
+                const spent = stats.category_totals[cat] || 0;
+                const percentage = limit > 0 ? (spent / limit * 100) : 0;
+                const fillPercent = Math.min(percentage, 100);
+                
+                let stateClass = "healthy";
+                if (percentage >= 100) {
+                    stateClass = "danger";
+                } else if (percentage >= stats.threshold) {
+                    stateClass = "warning";
+                }
+                
+                listHtml += `
+                <div class="cat-budget-item" id="cat-budget-${cat}">
+                    <div class="cat-budget-info">
+                        <span class="cat-name"><strong>${cat}</strong></span>
+                        <span class="cat-values">₹${spent} of ₹${limit}</span>
+                    </div>
+                    <div class="cat-progress-bg">
+                        <div class="cat-progress-fill ${stateClass}" style="width: ${fillPercent}%"></div>
+                    </div>
+                </div>`;
+            });
+        }
+        categoryBudgetsList.innerHTML = listHtml;
     }
 
     // 4. Update Category list values
@@ -655,10 +696,10 @@ function updateDOMStats(stats) {
                 
                 rowsHtml += `
                 <tr class="expense-row" id="row-${e.id}"
-                    data-name="${e.name.replace(/"/g, '&quot;')}" 
-                    data-category="${e.category}"
-                    data-date="${e.date}"
-                    data-amount="${e.amount}">
+                     data-name="${e.name.replace(/"/g, '&quot;')}" 
+                     data-category="${e.category}"
+                     data-date="${e.date}"
+                     data-amount="${e.amount}">
                     <td class="td-date">${e.date}</td>
                     <td class="td-name"><strong>${e.name}</strong></td>
                     <td>
@@ -834,10 +875,14 @@ function setupAjaxBudgetController() {
 
 // AJAX - Delete Budget
 function ajaxDeleteBudget() {
-    if (!confirm("Delete budget limit for this month?")) return;
+    const select = document.getElementById("budgetCategorySelect");
+    const category = select ? select.value : "global";
+    const displayName = category === "global" ? "Overall Monthly" : category;
+    
+    if (!confirm(`Delete budget limit for ${displayName} category?`)) return;
     
     showLoader();
-    fetch("/delete_budget", {
+    fetch(`/delete_budget?category=${category}`, {
         headers: {
             "X-Requested-With": "XMLHttpRequest"
         }
@@ -860,10 +905,14 @@ function ajaxDeleteBudget() {
 
 // AJAX - Reset Budget to ₹0
 function ajaxResetBudget() {
-    if (!confirm("Reset budget limit to ₹0 for this month?")) return;
+    const select = document.getElementById("budgetCategorySelect");
+    const category = select ? select.value : "global";
+    const displayName = category === "global" ? "Overall Monthly" : category;
+    
+    if (!confirm(`Reset budget limit for ${displayName} category?`)) return;
     
     showLoader();
-    fetch("/reset_budget", {
+    fetch(`/reset_budget?category=${category}`, {
         headers: {
             "X-Requested-With": "XMLHttpRequest"
         }
@@ -881,6 +930,96 @@ function ajaxResetBudget() {
     .catch(err => {
         hideLoader();
         console.error("AJAX budget resetting error:", err);
+    });
+}
+
+// Global stats cache for category budget selection (Option B)
+let currentStatsData = null;
+
+// Triggered when budget category selection changes
+function onBudgetCategoryChange() {
+    const select = document.getElementById("budgetCategorySelect");
+    const input = document.getElementById("budget");
+    const resetBtn = document.getElementById("budgetResetBtn");
+    if (!select || !input || !currentStatsData) return;
+    
+    const selectedScope = select.value;
+    let amount = 0;
+    
+    if (selectedScope === "global") {
+        amount = currentStatsData.budget_amount;
+    } else {
+        amount = currentStatsData.category_budgets[selectedScope] || 0;
+    }
+    
+    input.value = amount || "";
+    if (resetBtn) {
+        resetBtn.textContent = selectedScope === "global" 
+            ? "Reset Budget to ₹0" 
+            : `Reset ${selectedScope} Budget to ₹0`;
+    }
+}
+
+// Setup account Settings forms submissions via AJAX
+function setupSettingsForms() {
+    const forms = ["profileForm", "securityForm", "preferencesForm"];
+    forms.forEach(formId => {
+        const form = document.getElementById(formId);
+        if (!form) return;
+        
+        form.addEventListener("submit", function(e) {
+            e.preventDefault();
+            showLoader();
+            
+            const formData = new FormData(form);
+            const actionUrl = form.getAttribute("action");
+            
+            fetch(actionUrl, {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideLoader();
+                if (data.success) {
+                    showToast(data.message);
+                    if (formId === "securityForm") {
+                        form.reset();
+                    }
+                } else {
+                    alert(data.message || "Failed to save settings.");
+                }
+            })
+            .catch(err => {
+                hideLoader();
+                console.error("Settings saving error:", err);
+            });
+        });
+    });
+}
+
+// Fetch stats on load to populate budget inputs
+function fetchStatsOnLoad() {
+    const budgetSettingForm = document.getElementById("budgetSettingForm");
+    if (!budgetSettingForm) return;
+    
+    fetch("/", {
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success && data.stats) {
+            currentStatsData = data.stats;
+            onBudgetCategoryChange();
+        }
+    })
+    .catch(err => {
+        console.error("Error pre-fetching stats on load:", err);
     });
 }
 
@@ -994,9 +1133,13 @@ document.addEventListener("DOMContentLoaded", () => {
     setupAjaxAddExpense();
     setupAjaxEditExpense();
     setupAjaxBudgetController();
+    setupSettingsForms();
     
     // Hook OCR receipt scanner
     initReceiptScanner();
+    
+    // Fetch initial stats dynamically
+    fetchStatsOnLoad();
     
     // Fetch notifications badge & list on load (Version 9)
     fetchNotifications();
