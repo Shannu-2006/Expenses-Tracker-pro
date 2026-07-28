@@ -1497,3 +1497,32 @@ body {
         border-bottom: 1px solid #eee !important;
     }
 }
+
+/* ==========================================================================
+   Analytics Dashboard Styles (Version 7)
+   ========================================================================== */
+.analytics-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+.dashboard-chart-card {
+    min-height: 350px;
+    width: 100%;
+}
+.big-canvas {
+    min-height: 280px;
+    width: 100%;
+}
+@media (max-width: 992px) {
+    .analytics-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+@media print {
+    .analytics-dashboard-panel,
+    .analytics-dashboard-grid,
+    .dashboard-chart-card {
+        display: none !important;
+    }
+}

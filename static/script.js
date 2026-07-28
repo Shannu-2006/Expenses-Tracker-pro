@@ -4,6 +4,10 @@
 
 let expenseChart = null;
 let categoryBarChart = null;
+let monthlyTrendChartObj = null;
+let weeklyTrendChartObj = null;
+let comparisonChartObj = null;
+let yearlyChartObj = null;
 
 // Pagination variables
 let currentPage = 1;
@@ -337,6 +341,156 @@ function renderCharts() {
                 plugins: {
                     legend: {
                         display: false
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Monthly Spending Trend Chart (Line)
+    const monthlyCanvas = document.getElementById("monthlyTrendChart");
+    if (monthlyCanvas && typeof monthlyValues !== 'undefined') {
+        if (monthlyTrendChartObj) monthlyTrendChartObj.destroy();
+        monthlyTrendChartObj = new Chart(monthlyCanvas, {
+            type: "line",
+            data: {
+                labels: monthlyLabels,
+                datasets: [{
+                    label: "Monthly Spending (₹)",
+                    data: monthlyValues,
+                    borderColor: "#4f46e5",
+                    backgroundColor: "rgba(99, 102, 241, 0.1)",
+                    tension: 0.3,
+                    fill: true,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: config.textColor }
+                    },
+                    y: {
+                        grid: { color: config.gridColor },
+                        ticks: { color: config.textColor },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. Weekly Spending Trend Chart (Bar)
+    const weeklyCanvas = document.getElementById("weeklyTrendChart");
+    if (weeklyCanvas && typeof weeklyValues !== 'undefined') {
+        if (weeklyTrendChartObj) weeklyTrendChartObj.destroy();
+        weeklyTrendChartObj = new Chart(weeklyCanvas, {
+            type: "bar",
+            data: {
+                labels: weeklyLabels,
+                datasets: [{
+                    label: "Weekly Spend (₹)",
+                    data: weeklyValues,
+                    backgroundColor: "#3b82f6",
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: config.textColor }
+                    },
+                    y: {
+                        grid: { color: config.gridColor },
+                        ticks: { color: config.textColor },
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+
+    // 5. Month-over-Month Category Comparison Chart (Grouped Bar)
+    const compCanvas = document.getElementById("categoryComparisonChart");
+    if (compCanvas && typeof currentMonthValues !== 'undefined') {
+        if (comparisonChartObj) comparisonChartObj.destroy();
+        comparisonChartObj = new Chart(compCanvas, {
+            type: "bar",
+            data: {
+                labels: categoryLabels,
+                datasets: [
+                    {
+                        label: `${typeof prevMonthName !== 'undefined' ? prevMonthName : 'Last Month'} (₹)`,
+                        data: prevMonthValues,
+                        backgroundColor: "#9ca3af",
+                        borderRadius: 4
+                    },
+                    {
+                        label: `${typeof currentMonthName !== 'undefined' ? currentMonthName : 'This Month'} (₹)`,
+                        data: currentMonthValues,
+                        backgroundColor: "#4f46e5",
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: config.textColor }
+                    },
+                    y: {
+                        grid: { color: config.gridColor },
+                        ticks: { color: config.textColor },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // 6. Yearly Spending Chart (Doughnut)
+    const yearlyCanvas = document.getElementById("yearlyComparisonChart");
+    if (yearlyCanvas && typeof yearlyValues !== 'undefined') {
+        if (yearlyChartObj) yearlyChartObj.destroy();
+        yearlyChartObj = new Chart(yearlyCanvas, {
+            type: "doughnut",
+            data: {
+                labels: yearlyLabels,
+                datasets: [{
+                    data: yearlyValues,
+                    backgroundColor: [
+                        "#4f46e5",
+                        "#10b981",
+                        "#f59e0b",
+                        "#ef4444"
+                    ],
+                    borderWidth: document.body.classList.contains("dark-mode") ? 2 : 1,
+                    borderColor: document.body.classList.contains("dark-mode") ? "#1e293b" : "#ffffff"
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "bottom",
+                        labels: {
+                            usePointStyle: true,
+                            padding: 12,
+                            color: config.textColor
+                        }
                     }
                 }
             }

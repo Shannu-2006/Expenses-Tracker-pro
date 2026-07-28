@@ -526,6 +526,135 @@ def print_report():
         current_year=current_year
     )
 
+@app.route('/analytics')
+def analytics():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    from datetime import timedelta
+    today = datetime.now()
+    current_year = today.year
+    current_month = today.month
+    
+    expenses = Expense.query.filter_by(user_id=session['user_id']).all()
+    
+    # 1. Monthly Spending Trend (current year)
+    monthly_trend = [0] * 12
+    for e in expenses:
+        if e.date:
+            try:
+                dt = datetime.strptime(e.date, '%Y-%m-%d')
+                if dt.year == current_year:
+                    monthly_trend[dt.month - 1] += e.amount
+            except ValueError:
+                pass
+                
+    months_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    months_full_names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    
+    # 2. Weekly Spending Trend (Last 8 Weeks)
+    weekly_trend_data = {}
+    week_keys = []
+    # Create keys for the last 8 weeks
+    for i in range(7, -1, -1):
+        start_of_week = today - timedelta(days=today.weekday() + i*7)
+        key = start_of_week.strftime('%b %d')
+        week_keys.append(key)
+        weekly_trend_data[key] = 0
+        
+    for e in expenses:
+        if e.date:
+            try:
+                dt = datetime.strptime(e.date, '%Y-%m-%d')
+                for idx, k in enumerate(week_keys):
+                    # Start date of this week slot
+                    start_of_wk = today - timedelta(days=today.weekday() + (7 - idx)*7)
+                    end_of_wk = start_of_wk + timedelta(days=6)
+                    if start_of_wk.date() <= dt.date() <= end_of_wk.date():
+                        weekly_trend_data[k] += e.amount
+                        break
+            except ValueError:
+                pass
+    weekly_trend_values = [weekly_trend_data[k] for k in week_keys]
+    
+    # 3. Yearly Spending Trend
+    yearly_data = {}
+    for e in expenses:
+        if e.date:
+            try:
+                dt = datetime.strptime(e.date, '%Y-%m-%d')
+                yr = str(dt.year)
+                yearly_data[yr] = yearly_data.get(yr, 0) + e.amount
+            except ValueError:
+                pass
+    sorted_years = sorted(yearly_data.keys())
+    yearly_trend_values = [yearly_data[yr] for yr in sorted_years]
+    
+    # 4. Month-over-Month Comparison (This Month vs. Last Month category breakdown)
+    prev_month = current_month - 1 if current_month > 1 else 12
+    prev_month_year = current_year if current_month > 1 else current_year - 1
+    
+    categories = ["Food", "Travel", "Rent", "Shopping", "Fun", "Other"]
+    current_month_cat = {cat: 0 for cat in categories}
+    prev_month_cat = {cat: 0 for cat in categories}
+    
+    for e in expenses:
+        if e.date:
+            try:
+                dt = datetime.strptime(e.date, '%Y-%m-%d')
+                if dt.year == current_year and dt.month == current_month:
+                    if e.category in current_month_cat:
+                        current_month_cat[e.category] += e.amount
+                elif dt.year == prev_month_year and dt.month == prev_month:
+                    if e.category in prev_month_cat:
+                        prev_month_cat[e.category] += e.amount
+            except ValueError:
+                pass
+                
+    current_month_values = [current_month_cat[c] for c in categories]
+    prev_month_values = [prev_month_cat[c] for c in categories]
+    
+    # 5. Key Highlights Metrics
+    current_month_total = sum(current_month_values)
+    elapsed_days = today.day
+    daily_average = current_month_total // elapsed_days if elapsed_days > 0 else 0
+    
+    highest_month_idx = monthly_trend.index(max(monthly_trend)) if sum(monthly_trend) > 0 else -1
+    highest_month_name = months_full_names[highest_month_idx] if highest_month_idx != -1 else 'No Spends'
+    highest_month_amount = monthly_trend[highest_month_idx] if highest_month_idx != -1 else 0
+    
+    active_months = [(idx, val) for idx, val in enumerate(monthly_trend) if val > 0]
+    if active_months:
+        lowest_month_idx, lowest_month_amount = min(active_months, key=lambda x: x[1])
+        lowest_month_name = months_full_names[lowest_month_idx]
+    else:
+        lowest_month_name = 'No Spends'
+        lowest_month_amount = 0
+        
+    annual_total = sum(monthly_trend)
+    
+    return render_template(
+        'analytics.html',
+        monthly_labels=months_names,
+        monthly_values=monthly_trend,
+        weekly_labels=week_keys,
+        weekly_values=weekly_trend_values,
+        yearly_labels=sorted_years,
+        yearly_values=yearly_trend_values,
+        categories=categories,
+        current_month_values=current_month_values,
+        prev_month_values=prev_month_values,
+        daily_average=daily_average,
+        annual_total=annual_total,
+        highest_month_name=highest_month_name,
+        highest_month_amount=highest_month_amount,
+        lowest_month_name=lowest_month_name,
+        lowest_month_amount=lowest_month_amount,
+        current_month_name=today.strftime("%B"),
+        current_year=current_year,
+        prev_month_name=datetime(prev_month_year, prev_month, 1).strftime("%B")
+    )
+
 @app.route('/', methods=['GET', 'POST'])
 def home():
 
