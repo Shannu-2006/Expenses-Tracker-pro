@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Expense Tracker Pro - Modern Client Interactions
+   Expense Tracker Pro - Modern Client Interactions & AJAX Engine
    ========================================================================== */
 
 let expenseChart = null;
@@ -11,78 +11,133 @@ let yearlyChartObj = null;
 
 // Pagination variables
 let currentPage = 1;
-const itemsPerPage = 10;
+const rowsPerPage = 10;
 let visibleRows = [];
 
-// Loading spinner controls
+// Show Loading Spinner Page Screen Overlay
 function showLoader() {
     const loader = document.getElementById("loadingOverlay");
     if (loader) {
         loader.style.display = "flex";
+        loader.style.opacity = "1";
     }
 }
 
+// Hide Loading Spinner Screen Overlay
 function hideLoader() {
     const loader = document.getElementById("loadingOverlay");
     if (loader) {
-        loader.style.display = "none";
+        loader.style.opacity = "0";
+        setTimeout(() => {
+            loader.style.display = "none";
+        }, 200);
     }
 }
 
-// Search and Advanced Filters (Version 5.7)
+// Sidebar Drawer Collapsible Trigger
+function toggleSidebar() {
+    const sidebar = document.getElementById("sidebarNav");
+    if (sidebar) {
+        sidebar.classList.toggle("collapsed");
+        
+        // Let Chart.js resize smoothly after transition completes
+        setTimeout(() => {
+            if (expenseChart) expenseChart.resize();
+            if (categoryBarChart) categoryBarChart.resize();
+            if (monthlyTrendChartObj) monthlyTrendChartObj.resize();
+            if (weeklyTrendChartObj) weeklyTrendChartObj.resize();
+            if (comparisonChartObj) comparisonChartObj.resize();
+            if (yearlyChartObj) yearlyChartObj.resize();
+        }, 300);
+    }
+}
+
+// Slide-out Drawer Actions
+function openTransactionDrawer() {
+    const drawer = document.getElementById("transactionDrawer");
+    if (drawer) {
+        drawer.classList.add("open");
+    }
+}
+
+function closeTransactionDrawer() {
+    const drawer = document.getElementById("transactionDrawer");
+    if (drawer) {
+        drawer.classList.remove("open");
+    }
+}
+
+// Display dynamically generated success toasts
+function showToast(message) {
+    // Remove existing toast if visible
+    const existingToast = document.getElementById("toastMessage");
+    if (existingToast) existingToast.remove();
+
+    const container = document.getElementById("toastContainer");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = "alert alert-success toast";
+    toast.id = "toastMessage";
+    toast.innerHTML = `
+        <span class="alert-icon"><i data-lucide="sparkles"></i></span>
+        <span class="alert-text">${message}</span>
+        <button class="alert-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    container.appendChild(toast);
+    
+    // Trigger Lucide icons inside the new toast
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+        toast.style.transition = "opacity 0.5s ease-out, transform 0.5s ease-out";
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(-10px)";
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
+
+// Ledger filtering search engine (advanced filtering client-side)
 function searchExpenses() {
-    const searchValue = document.getElementById("searchInput").value.toLowerCase();
-    const categoryValue = document.getElementById("categoryFilter").value.toLowerCase();
+    const query = document.getElementById("searchInput").value.toLowerCase();
+    const category = document.getElementById("categoryFilter").value.toLowerCase();
     
-    // Range Filters
-    const dateStart = document.getElementById("dateStartFilter").value;
-    const dateEnd = document.getElementById("dateEndFilter").value;
-    const amountMinVal = document.getElementById("amountMinFilter").value;
-    const amountMaxVal = document.getElementById("amountMaxFilter").value;
+    const startVal = document.getElementById("dateStartFilter").value;
+    const endVal = document.getElementById("dateEndFilter").value;
     
-    const amountMin = amountMinVal !== "" ? Number(amountMinVal) : null;
-    const amountMax = amountMaxVal !== "" ? Number(amountMaxVal) : null;
-
+    const minVal = parseFloat(document.getElementById("amountMinFilter").value) || 0;
+    const maxVal = parseFloat(document.getElementById("amountMaxFilter").value) || Infinity;
+    
     const rows = document.querySelectorAll(".expense-row");
-    visibleRows = []; // Reset visible rows
-
+    visibleRows = [];
+    
     rows.forEach(row => {
-        const expenseName = row.dataset.name.toLowerCase();
-        const expenseCategory = row.dataset.category.toLowerCase();
-        const expenseDate = row.dataset.date || "";
-        const expenseAmount = Number(row.dataset.amount) || 0;
-
-        // 1. Text & Category Matches
-        const matchesSearch = expenseName.includes(searchValue);
-        const matchesCategory = categoryValue === "all" || expenseCategory === categoryValue;
-
-        // 2. Date Range Matches
-        let matchesDate = true;
-        if (expenseDate) {
-            if (dateStart && expenseDate < dateStart) matchesDate = false;
-            if (dateEnd && expenseDate > dateEnd) matchesDate = false;
-        } else if (dateStart || dateEnd) {
-            matchesDate = false; // No date value but a filter is set
-        }
-
-        // 3. Amount Range Matches
-        let matchesAmount = true;
-        if (amountMin !== null && expenseAmount < amountMin) matchesAmount = false;
-        if (amountMax !== null && expenseAmount > amountMax) matchesAmount = false;
-
-        // If passes all filters, add to visible list
-        if (matchesSearch && matchesCategory && matchesDate && matchesAmount) {
+        const name = row.getAttribute("data-name").toLowerCase();
+        const cat = row.getAttribute("data-category").toLowerCase();
+        const dateStr = row.getAttribute("data-date");
+        const amount = parseFloat(row.getAttribute("data-amount")) || 0;
+        
+        let match = true;
+        
+        if (query && !name.includes(query)) match = false;
+        if (category !== "all" && cat !== category) match = false;
+        if (startVal && dateStr < startVal) match = false;
+        if (endVal && dateStr > endVal) match = false;
+        if (amount < minVal || amount > maxVal) match = false;
+        
+        if (match) {
             visibleRows.push(row);
+            row.style.display = "";
         } else {
             row.style.display = "none";
         }
     });
-
+    
     currentPage = 1;
     applyPagination();
 }
 
-// Reset filters
 function clearFilters() {
     document.getElementById("searchInput").value = "";
     document.getElementById("categoryFilter").value = "all";
@@ -93,43 +148,37 @@ function clearFilters() {
     searchExpenses();
 }
 
-// Client-side Pagination Renderer
+// Client-side Ledger pagination
 function applyPagination() {
-    const totalPages = Math.ceil(visibleRows.length / itemsPerPage) || 1;
-
-    // Boundary protection
-    if (currentPage > totalPages) currentPage = totalPages;
-    if (currentPage < 1) currentPage = 1;
-
-    // Toggle pagination bar visibility
+    const totalPages = Math.ceil(visibleRows.length / rowsPerPage) || 1;
     const pagBar = document.getElementById("paginationBar");
-    if (pagBar) {
-        pagBar.style.display = visibleRows.length > itemsPerPage ? "flex" : "none";
-    }
-
-    // Hide all table rows first
-    const rows = document.querySelectorAll(".expense-row");
-    rows.forEach(r => r.style.display = "none");
-
-    // Display rows for the active page index
-    const startIdx = (currentPage - 1) * itemsPerPage;
-    const endIdx = startIdx + itemsPerPage;
-
-    for (let i = startIdx; i < endIdx && i < visibleRows.length; i++) {
-        visibleRows[i].style.display = "";
-    }
-
-    // Update pagination labels
     const info = document.getElementById("paginationInfo");
-    if (info) {
-        info.textContent = `Page ${currentPage} of ${totalPages}`;
+    
+    if (visibleRows.length <= rowsPerPage) {
+        if (pagBar) pagBar.style.display = "none";
+        visibleRows.forEach(row => row.style.display = "");
+        return;
     }
-
-    // Disable buttons at boundaries
+    
+    if (pagBar) pagBar.style.display = "flex";
+    
+    visibleRows.forEach((row, index) => {
+        const start = (currentPage - 1) * rowsPerPage;
+        const end = start + rowsPerPage;
+        if (index >= start && index < end) {
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
+    });
+    
+    if (info) info.textContent = `Page ${currentPage} of ${totalPages}`;
+    
     const prevBtn = document.getElementById("prevPageBtn");
     const nextBtn = document.getElementById("nextPageBtn");
-    if (prevBtn) prevBtn.disabled = (currentPage === 1);
-    if (nextBtn) nextBtn.disabled = (currentPage === totalPages);
+    
+    if (prevBtn) prevBtn.disabled = currentPage === 1;
+    if (nextBtn) nextBtn.disabled = currentPage === totalPages;
 }
 
 function changePage(direction) {
@@ -137,12 +186,7 @@ function changePage(direction) {
     applyPagination();
 }
 
-// Confirmation Dialog for Delete
-function confirmDelete() {
-    return confirm("Are you sure you want to delete this expense? This action cannot be undone.");
-}
-
-// Edit Modal Handlers (Version 5.8 Date/Notes)
+// Modal Handlers (AJAX version)
 function openEditModal(id, name, amount, category, date, notes) {
     const modal = document.getElementById("editModal");
     if (!modal) return;
@@ -151,12 +195,10 @@ function openEditModal(id, name, amount, category, date, notes) {
     document.getElementById("editName").value = name;
     document.getElementById("editAmount").value = amount;
     document.getElementById("editCategory").value = category;
-    
-    // Bind date or default to today
     document.getElementById("editDate").value = date || new Date().toISOString().split('T')[0];
     document.getElementById("editNotes").value = notes || "";
     
-    document.getElementById("editForm").action = "/update/" + id;
+    document.getElementById("ajaxEditForm").setAttribute("action", "/update/" + id);
 }
 
 function closeEditModal() {
@@ -166,7 +208,6 @@ function closeEditModal() {
     }
 }
 
-// Global modal click handler to close if clicked outside content
 window.onclick = function(event) {
     const modal = document.getElementById("editModal");
     if (event.target === modal) {
@@ -174,18 +215,14 @@ window.onclick = function(event) {
     }
 }
 
-// Theme management (Light / Dark mode)
+// Theme management
 function toggleDarkMode() {
     const isDark = document.body.classList.toggle("dark-mode");
     localStorage.setItem("theme", isDark ? "dark" : "light");
     
-    // Update theme toggle icon
     const themeIcon = document.querySelector(".theme-icon");
-    if (themeIcon) {
-        themeIcon.textContent = isDark ? "☀️" : "🌙";
-    }
-
-    // Recreate charts to pick up the new colors matching dark mode
+    if (themeIcon) themeIcon.textContent = isDark ? "☀️" : "🌙";
+    
     renderCharts();
 }
 
@@ -202,7 +239,6 @@ function loadSavedTheme() {
     }
 }
 
-// Render dynamic Client-side Date
 function displayCurrentDate() {
     const dateEl = document.getElementById("currentDate");
     if (!dateEl) return;
@@ -212,7 +248,6 @@ function displayCurrentDate() {
     dateEl.textContent = today.toLocaleDateString("en-US", options);
 }
 
-// Pre-fill form dates to today
 function prefillFormDates() {
     const todayStr = new Date().toISOString().split('T')[0];
     const addDateInput = document.getElementById("expenseDate");
@@ -221,7 +256,6 @@ function prefillFormDates() {
     }
 }
 
-// Animate Budget Progress Bar
 function animateProgressBar() {
     const progressFill = document.querySelector(".progress-bar-fill");
     if (progressFill) {
@@ -255,7 +289,7 @@ function renderCharts() {
     if (expenseChart) expenseChart.destroy();
     if (categoryBarChart) categoryBarChart.destroy();
 
-    // 1. Pie Chart
+    // 1. Pie Chart (Distribution)
     const pieCanvas = document.getElementById("expenseChart");
     if (pieCanvas && typeof chartValues !== 'undefined') {
         const parsedValues = chartValues.map(val => Number(val) || 0);
@@ -295,7 +329,7 @@ function renderCharts() {
         });
     }
 
-    // 2. Bar Chart
+    // 2. Bar Chart (Category spending)
     const barCanvas = document.getElementById("barChart");
     if (barCanvas && typeof chartValues !== 'undefined') {
         categoryBarChart = new Chart(barCanvas, {
@@ -313,7 +347,7 @@ function renderCharts() {
                         "rgba(249, 115, 22, 0.85)",
                         "rgba(107, 114, 128, 0.85)"
                     ],
-                    borderRadius: 4
+                    borderRadius: 6
                 }]
             },
             options: {
@@ -321,36 +355,31 @@ function renderCharts() {
                 maintainAspectRatio: false,
                 scales: {
                     x: {
-                        grid: {
-                            display: false
-                        },
-                        ticks: {
-                            color: config.textColor
-                        }
+                        grid: { display: false },
+                        ticks: { color: config.textColor }
                     },
                     y: {
-                        grid: {
-                            color: config.gridColor
-                        },
-                        ticks: {
-                            color: config.textColor
-                        },
+                        grid: { color: config.gridColor },
+                        ticks: { color: config.textColor },
                         beginAtZero: true
                     }
                 },
                 plugins: {
-                    legend: {
-                        display: false
-                    }
+                    legend: { display: false }
                 }
             }
         });
     }
 
-    // 3. Monthly Spending Trend Chart (Line)
+    // 3. Monthly Spending Trend Chart (Line with linear gradients fill)
     const monthlyCanvas = document.getElementById("monthlyTrendChart");
     if (monthlyCanvas && typeof monthlyValues !== 'undefined') {
         if (monthlyTrendChartObj) monthlyTrendChartObj.destroy();
+        const ctx = monthlyCanvas.getContext("2d");
+        const gradientFill = ctx.createLinearGradient(0, 0, 0, 250);
+        gradientFill.addColorStop(0, "rgba(99, 102, 241, 0.45)");
+        gradientFill.addColorStop(1, "rgba(99, 102, 241, 0)");
+
         monthlyTrendChartObj = new Chart(monthlyCanvas, {
             type: "line",
             data: {
@@ -359,10 +388,10 @@ function renderCharts() {
                     label: "Monthly Spending (₹)",
                     data: monthlyValues,
                     borderColor: "#4f46e5",
-                    backgroundColor: "rgba(99, 102, 241, 0.1)",
-                    tension: 0.3,
+                    backgroundColor: gradientFill,
+                    tension: 0.35,
                     fill: true,
-                    borderWidth: 2
+                    borderWidth: 2.5
                 }]
             },
             options: {
@@ -383,7 +412,7 @@ function renderCharts() {
         });
     }
 
-    // 4. Weekly Spending Trend Chart (Bar)
+    // 4. Weekly Spending Trend Chart (Bar with rounded borders)
     const weeklyCanvas = document.getElementById("weeklyTrendChart");
     if (weeklyCanvas && typeof weeklyValues !== 'undefined') {
         if (weeklyTrendChartObj) weeklyTrendChartObj.destroy();
@@ -395,7 +424,7 @@ function renderCharts() {
                     label: "Weekly Spend (₹)",
                     data: weeklyValues,
                     backgroundColor: "#3b82f6",
-                    borderRadius: 4
+                    borderRadius: 6
                 }]
             },
             options: {
@@ -432,13 +461,13 @@ function renderCharts() {
                         label: `${typeof prevMonthName !== 'undefined' ? prevMonthName : 'Last Month'} (₹)`,
                         data: prevMonthValues,
                         backgroundColor: "#9ca3af",
-                        borderRadius: 4
+                        borderRadius: 6
                     },
                     {
                         label: `${typeof currentMonthName !== 'undefined' ? currentMonthName : 'This Month'} (₹)`,
                         data: currentMonthValues,
                         backgroundColor: "#4f46e5",
-                        borderRadius: 4
+                        borderRadius: 6
                     }
                 ]
             },
@@ -498,17 +527,361 @@ function renderCharts() {
     }
 }
 
-// Auto-dismiss Flash Message Toast after 4 seconds
-function setupFlashDismiss() {
-    const toast = document.getElementById("toastMessage");
-    if (toast) {
-        setTimeout(() => {
-            toast.style.transition = "opacity 0.5s ease-out, transform 0.5s ease-out";
-            toast.style.opacity = "0";
-            toast.style.transform = "translateY(-10px)";
-            setTimeout(() => toast.remove(), 500);
-        }, 4000);
+// --------------------------------------------------------------------------
+// AJAX Operations (Version 7.5 Single Page App Interactions)
+// --------------------------------------------------------------------------
+
+// Re-compile HTML values and update the Dashboard elements dynamically
+function updateDOMStats(stats) {
+    // 1. Update KPI Values
+    const kpiTotal = document.getElementById("kpiTotal");
+    if (kpiTotal) kpiTotal.textContent = "₹" + stats.total;
+
+    const kpiBudget = document.getElementById("kpiBudget");
+    if (kpiBudget) kpiBudget.textContent = "₹" + stats.budget_amount;
+
+    const kpiRemaining = document.getElementById("kpiRemaining");
+    if (kpiRemaining) {
+        kpiRemaining.textContent = "₹" + stats.remaining_budget;
+        kpiRemaining.className = "kpi-value status-color-" + stats.budget_status;
     }
+
+    const kpiAverage = document.getElementById("kpiAverage");
+    if (kpiAverage) {
+        kpiAverage.innerHTML = "₹" + stats.average_expense + " <span class='kpi-subtext'>(" + stats.transaction_count + " tx)</span>";
+    }
+
+    // 2. Update Header elements
+    const monthNameText = document.getElementById("monthNameText");
+    if (monthNameText) monthNameText.textContent = stats.month_name;
+
+    const budgetStateText = document.getElementById("budgetStateText");
+    if (budgetStateText) {
+        budgetStateText.textContent = stats.budget_state;
+        budgetStateText.className = "pill-value status-" + stats.budget_status;
+    }
+
+    // 3. Update Progress bars and text status
+    const progressBarFill = document.getElementById("progressBarFill");
+    if (progressBarFill) {
+        progressBarFill.className = "progress-bar-fill " + stats.budget_status;
+        progressBarFill.style.width = stats.budget_percentage + "%";
+        progressBarFill.dataset.progress = stats.budget_percentage;
+    }
+
+    const progressBarPercentage = document.getElementById("progressBarPercentage");
+    if (progressBarPercentage) {
+        progressBarPercentage.textContent = stats.actual_budget_percentage.toFixed(1) + "%";
+        progressBarPercentage.className = "progress-percent-badge status-bg-" + stats.budget_status;
+    }
+
+    const budgetStatusMsgContainer = document.getElementById("budgetStatusMsgContainer");
+    if (budgetStatusMsgContainer) {
+        let msgHtml = "";
+        if (stats.budget_status === "healthy") {
+            msgHtml = `<p class="status-msg status-msg-healthy"><span class="msg-icon"><i data-lucide="check-circle-2"></i></span> Budget Healthy: Keep staying under control!</p>`;
+        } else if (stats.budget_status === "warning") {
+            msgHtml = `<p class="status-msg status-msg-warning"><span class="msg-icon"><i data-lucide="alert-triangle"></i></span> Warning: You're approaching your monthly budget limit!</p>`;
+        } else if (stats.budget_status === "danger") {
+            msgHtml = `<p class="status-msg status-msg-danger"><span class="msg-icon"><i data-lucide="skull"></i></span> Danger: Budget Exceeded! Limit your spendings immediately.</p>`;
+        }
+        budgetStatusMsgContainer.innerHTML = msgHtml;
+    }
+
+    // Update delete budget triggers
+    const budgetDeleteAction = document.getElementById("budgetDeleteAction");
+    if (budgetDeleteAction) {
+        if (stats.budget_amount > 0) {
+            budgetDeleteAction.innerHTML = `<button onclick="ajaxDeleteBudget()" class="btn-danger-link btn-xs border-none bg-none cursor-pointer">Delete Budget</button>`;
+        } else {
+            budgetDeleteAction.innerHTML = "";
+        }
+    }
+
+    // Update Reset button display state
+    const budgetResetAction = document.getElementById("budgetResetAction");
+    const budgetInput = document.getElementById("budget");
+    if (budgetInput) {
+        budgetInput.value = stats.budget_amount;
+    }
+    if (budgetResetAction) {
+        budgetResetAction.style.display = stats.budget_amount > 0 ? "block" : "none";
+    }
+
+    // 4. Update Category list values
+    const catFood = document.getElementById("catTotalFood");
+    if (catFood) catFood.textContent = "₹" + stats.category_totals.Food;
+    
+    const catTravel = document.getElementById("catTotalTravel");
+    if (catTravel) catTravel.textContent = "₹" + stats.category_totals.Travel;
+
+    const catRent = document.getElementById("catTotalRent");
+    if (catRent) catRent.textContent = "₹" + stats.category_totals.Rent;
+
+    const catShopping = document.getElementById("catTotalShopping");
+    if (catShopping) catShopping.textContent = "₹" + stats.category_totals.Shopping;
+
+    const catFun = document.getElementById("catTotalFun");
+    if (catFun) catFun.textContent = "₹" + stats.category_totals.Fun;
+
+    const catOther = document.getElementById("catTotalOther");
+    if (catOther) catOther.textContent = "₹" + stats.category_totals.Other;
+
+    // 5. Update chart variables and trigger redrawing
+    if (typeof chartValues !== 'undefined') {
+        chartValues[0] = stats.category_totals.Food;
+        chartValues[1] = stats.category_totals.Travel;
+        chartValues[2] = stats.category_totals.Rent;
+        chartValues[3] = stats.category_totals.Shopping;
+        chartValues[4] = stats.category_totals.Fun;
+        chartValues[5] = stats.category_totals.Other;
+        renderCharts();
+    }
+
+    // 6. Regenerate Expense List Rows in Table
+    const tableBody = document.getElementById("tableBody");
+    if (tableBody) {
+        if (stats.expenses.length === 0) {
+            tableBody.innerHTML = `
+                <tr class="no-records-row" id="noRecordsPlaceholder">
+                    <td colspan="6" class="text-center">No expenses recorded yet. Click Add Transaction to start tracking!</td>
+                </tr>`;
+        } else {
+            let rowsHtml = "";
+            stats.expenses.forEach(e => {
+                const notesCell = e.notes 
+                    ? `<span class="notes-preview" title="${e.notes.replace(/"/g, '&quot;')}">📝 <span class="notes-truncated">${e.notes}</span></span>`
+                    : `<span class="text-muted">-</span>`;
+                
+                rowsHtml += `
+                <tr class="expense-row" id="row-${e.id}"
+                    data-name="${e.name.replace(/"/g, '&quot;')}" 
+                    data-category="${e.category}"
+                    data-date="${e.date}"
+                    data-amount="${e.amount}">
+                    <td class="td-date">${e.date}</td>
+                    <td class="td-name"><strong>${e.name}</strong></td>
+                    <td>
+                        <span class="badge badge-category badge-${e.category.toLowerCase()}">
+                            ${e.category}
+                        </span>
+                    </td>
+                    <td class="td-amount">₹${e.amount}</td>
+                    <td class="td-notes">${notesCell}</td>
+                    <td class="text-right">
+                        <div class="row-actions">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openEditModal('${e.id}', '${e.name.replace(/'/g, "\\'")}', '${e.amount}', '${e.category}', '${e.date}', '${e.notes.replace(/'/g, "\\'")}')">
+                                <i data-lucide="edit-3"></i> Edit
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="ajaxDeleteExpense('${e.id}')">
+                                <i data-lucide="trash-2"></i> Delete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                `;
+            });
+            tableBody.innerHTML = rowsHtml;
+        }
+        
+        // Re-read visible rows lists
+        const rows = document.querySelectorAll(".expense-row");
+        visibleRows = Array.from(rows);
+        applyPagination();
+    }
+
+    // Refresh Lucide Vector SVGs inside dynamic blocks
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// AJAX - Adding Expense
+function setupAjaxAddExpense() {
+    const addForm = document.getElementById("ajaxAddExpenseForm");
+    if (!addForm) return;
+
+    addForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        showLoader();
+        
+        const formData = new FormData(addForm);
+        
+        fetch("/", {
+            method: "POST",
+            body: formData,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            hideLoader();
+            if (data.success) {
+                closeTransactionDrawer();
+                addForm.reset();
+                prefillFormDates();
+                showToast(data.message);
+                updateDOMStats(data.stats);
+            } else {
+                alert(data.message || "Failed to add expense.");
+            }
+        })
+        .catch(err => {
+            hideLoader();
+            console.error("AJAX adding error:", err);
+        });
+    });
+}
+
+// AJAX - Editing Expense
+function setupAjaxEditExpense() {
+    const editForm = document.getElementById("ajaxEditForm");
+    if (!editForm) return;
+
+    editForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        showLoader();
+        
+        const formData = new FormData(editForm);
+        const actionUrl = editForm.getAttribute("action");
+        
+        fetch(actionUrl, {
+            method: "POST",
+            body: formData,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            hideLoader();
+            if (data.success) {
+                closeEditModal();
+                showToast(data.message);
+                updateDOMStats(data.stats);
+            } else {
+                alert(data.message || "Failed to update expense.");
+            }
+        })
+        .catch(err => {
+            hideLoader();
+            console.error("AJAX editing error:", err);
+        });
+    });
+}
+
+// AJAX - Deleting Expense
+function ajaxDeleteExpense(id) {
+    if (!confirm("Are you sure you want to delete this expense? This action cannot be undone.")) return;
+    
+    showLoader();
+    fetch("/delete/" + id, {
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        hideLoader();
+        if (data.success) {
+            showToast(data.message);
+            updateDOMStats(data.stats);
+        } else {
+            alert(data.message || "Failed to delete expense.");
+        }
+    })
+    .catch(err => {
+        hideLoader();
+        console.error("AJAX deleting error:", err);
+    });
+}
+
+// AJAX - Set Budget
+function setupAjaxBudgetController() {
+    const budgetForm = document.getElementById("budgetSettingForm");
+    if (!budgetForm) return;
+
+    budgetForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        showLoader();
+        
+        const formData = new FormData(budgetForm);
+        
+        fetch("/set_budget", {
+            method: "POST",
+            body: formData,
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            hideLoader();
+            if (data.success) {
+                showToast(data.message);
+                updateDOMStats(data.stats);
+            } else {
+                alert(data.message || "Failed to save budget.");
+            }
+        })
+        .catch(err => {
+            hideLoader();
+            console.error("AJAX budget saving error:", err);
+        });
+    });
+}
+
+// AJAX - Delete Budget
+function ajaxDeleteBudget() {
+    if (!confirm("Delete budget limit for this month?")) return;
+    
+    showLoader();
+    fetch("/delete_budget", {
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        hideLoader();
+        if (data.success) {
+            showToast(data.message);
+            updateDOMStats(data.stats);
+        } else {
+            alert(data.message || "Failed to delete budget.");
+        }
+    })
+    .catch(err => {
+        hideLoader();
+        console.error("AJAX budget deleting error:", err);
+    });
+}
+
+// AJAX - Reset Budget to ₹0
+function ajaxResetBudget() {
+    if (!confirm("Reset budget limit to ₹0 for this month?")) return;
+    
+    showLoader();
+    fetch("/reset_budget", {
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        hideLoader();
+        if (data.success) {
+            showToast(data.message);
+            updateDOMStats(data.stats);
+        } else {
+            alert(data.message || "Failed to reset budget.");
+        }
+    })
+    .catch(err => {
+        hideLoader();
+        console.error("AJAX budget resetting error:", err);
+    });
 }
 
 // Window Load Handler
@@ -518,14 +891,34 @@ document.addEventListener("DOMContentLoaded", () => {
     prefillFormDates();
     animateProgressBar();
     
-    // Initial search to kick off pagination visible rows lists
+    // Initial search to kick off pagination
     const rows = document.querySelectorAll(".expense-row");
     visibleRows = Array.from(rows);
     applyPagination();
     
     renderCharts();
-    setupFlashDismiss();
     
-    // Complete loader dismiss
+    // Hook asynchronous forms triggers
+    setupAjaxAddExpense();
+    setupAjaxEditExpense();
+    setupAjaxBudgetController();
+    
+    // Auto-dismiss standard Flash message Toast on load if visible
+    const stdToast = document.getElementById("toastMessage");
+    if (stdToast) {
+        setTimeout(() => {
+            stdToast.style.transition = "opacity 0.5s ease-out, transform 0.5s ease-out";
+            stdToast.style.opacity = "0";
+            stdToast.style.transform = "translateY(-10px)";
+            setTimeout(() => stdToast.remove(), 500);
+        }, 4000);
+    }
+    
+    // Initialize crisp SVG vector Lucide Icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Dismiss loading overlay on complete load
     hideLoader();
 });

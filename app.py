@@ -9,7 +9,8 @@ from flask import (
     flash,
     session,
     send_file,
-    Response
+    Response,
+    jsonify
 )
 
 from flask_sqlalchemy import SQLAlchemy
@@ -209,20 +210,28 @@ def delete_budget():
     ).first()
 
     if budget:
-
         db.session.delete(budget)
         db.session.commit()
-
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "success": True,
+                "message": "Budget deleted successfully!",
+                "stats": get_user_stats(session['user_id'])
+            })
         flash("Budget deleted successfully!")
-
     else:
-
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "success": False,
+                "message": "No budget found for this month.",
+                "stats": get_user_stats(session['user_id'])
+            })
         flash("No budget found for this month.")
 
     return redirect('/')
+
 @app.route('/reset_budget')
 def reset_budget():
-
     if 'user_id' not in session:
         return redirect('/login')
 
@@ -236,20 +245,28 @@ def reset_budget():
     ).first()
 
     if budget:
-
         budget.amount = 0
         db.session.commit()
-
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "success": True,
+                "message": "Budget reset successfully!",
+                "stats": get_user_stats(session['user_id'])
+            })
         flash("Budget reset successfully!")
-
     else:
-
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "success": False,
+                "message": "No budget found for this month.",
+                "stats": get_user_stats(session['user_id'])
+            })
         flash("No budget found for this month.")
 
     return redirect('/')
+
 @app.route('/set_budget', methods=['POST'])
 def set_budget():
-
     if 'user_id' not in session:
         return redirect('/login')
 
@@ -265,25 +282,118 @@ def set_budget():
     ).first()
 
     if budget:
-
         budget.amount = amount
-
     else:
-
         budget = Budget(
             amount=amount,
             month=current_month,
             year=current_year,
             user_id=session['user_id']
         )
-
         db.session.add(budget)
 
     db.session.commit()
 
-    flash("Budget Saved Successfully!")
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": True,
+            "message": "Budget Saved Successfully!",
+            "stats": get_user_stats(session['user_id'])
+        })
 
+    flash("Budget Saved Successfully!")
     return redirect('/')
+
+# Helper function to compile full monthly analytics statistics in JSON
+def get_user_stats(user_id):
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    budget = Budget.query.filter_by(
+        user_id=user_id,
+        month=current_month,
+        year=current_year
+    ).first()
+
+    budget_amount = 0
+    if budget:
+        budget_amount = budget.amount
+
+    expenses = Expense.query.filter_by(
+        user_id=user_id
+    ).order_by(
+        Expense.id.desc()
+    ).all()
+
+    total = sum(expense.amount for expense in expenses)
+    transaction_count = len(expenses)
+    highest_expense = max([expense.amount for expense in expenses], default=0)
+    average_expense = total // transaction_count if transaction_count > 0 else 0
+
+    category_totals = {
+        "Food": 0,
+        "Travel": 0,
+        "Rent": 0,
+        "Shopping": 0,
+        "Fun": 0,
+        "Other": 0
+    }
+
+    for expense in expenses:
+        if expense.category in category_totals:
+            category_totals[expense.category] += expense.amount
+
+    budget_used = total
+    remaining_budget = budget_amount - total
+    if remaining_budget < 0:
+        remaining_budget = 0
+
+    actual_budget_percentage = 0
+    budget_percentage = 0
+    budget_status = "healthy"
+
+    if budget_amount > 0:
+        actual_budget_percentage = (budget_used / budget_amount) * 100
+        budget_percentage = min(actual_budget_percentage, 100)
+        if actual_budget_percentage >= 100:
+            budget_status = "danger"
+        elif actual_budget_percentage >= 80:
+            budget_status = "warning"
+        else:
+            budget_status = "healthy"
+
+    month_name = datetime.now().strftime("%B")
+    if budget_amount > 0:
+        budget_state = "Active"
+    else:
+        budget_state = "No Budget Set"
+
+    expense_list = [{
+        "id": e.id,
+        "name": e.name,
+        "amount": e.amount,
+        "category": e.category,
+        "date": e.date or '-',
+        "notes": e.notes or ''
+    } for e in expenses]
+
+    return {
+        "total": total,
+        "transaction_count": transaction_count,
+        "highest_expense": highest_expense,
+        "average_expense": average_expense,
+        "budget_amount": budget_amount,
+        "budget_used": budget_used,
+        "remaining_budget": remaining_budget,
+        "budget_percentage": budget_percentage,
+        "budget_status": budget_status,
+        "actual_budget_percentage": actual_budget_percentage,
+        "month_name": month_name,
+        "current_year": current_year,
+        "budget_state": budget_state,
+        "category_totals": category_totals,
+        "expenses": expense_list
+    }
 
 # Helper function to filter expenses for reports
 def get_filtered_expenses_query(user_id, start_date, end_date, category):
@@ -684,6 +794,13 @@ def home():
         db.session.add(expense)
         db.session.commit()
 
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "success": True,
+                "message": "Expense added successfully!",
+                "stats": get_user_stats(session['user_id'])
+            })
+
         flash("Expense added successfully!")
 
         return redirect('/')
@@ -860,6 +977,13 @@ def update(id):
 
     db.session.commit()
 
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": True,
+            "message": "Expense updated successfully!",
+            "stats": get_user_stats(session['user_id'])
+        })
+
     flash("Expense updated successfully!")
 
     return redirect('/')
@@ -878,6 +1002,13 @@ def delete(id):
 
     db.session.delete(expense)
     db.session.commit()
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": True,
+            "message": "Expense deleted successfully!",
+            "stats": get_user_stats(session['user_id'])
+        })
 
     flash("Expense deleted successfully!")
 

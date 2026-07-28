@@ -9,9 +9,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
-<body>
+<body class="app-shell">
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="spinner-container">
@@ -20,121 +21,171 @@
         </div>
     </div>
 
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <span class="nav-logo">💎</span>
-                <span class="nav-title">ExpenseTracker <span class="badge-pro">PRO</span></span>
+    <!-- Application Shell Container -->
+    <div class="app-layout">
+        
+        <!-- Collapsible Left Sidebar Navigation Drawer -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-brand">
+                <span class="brand-logo"><i data-lucide="gem"></i></span>
+                <span class="brand-text">ExpenseTracker <span class="badge-pro">PRO</span></span>
             </div>
-            <div class="nav-actions">
-                <a href="/" class="btn btn-outline btn-sm">🏠 Dashboard</a>
-                <a href="/reports" class="btn btn-outline btn-sm" onclick="showLoader()">📊 Reports</a>
-                <span class="nav-user">Welcome, <strong>{{ session['username'] }}</strong> 👋</span>
-                <button class="theme-toggle-btn" onclick="toggleDarkMode()" aria-label="Toggle dark mode">
-                    <span class="theme-icon">🌙</span>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li>
+                        <a href="/" onclick="showLoader()">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/reports" onclick="showLoader()">
+                            <i data-lucide="file-spreadsheet"></i>
+                            <span>Reports</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="/analytics">
+                            <i data-lucide="trending-up"></i>
+                            <span>Analytics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn-sidebar" onclick="toggleDarkMode()" aria-label="Toggle dark mode">
+                    <i data-lucide="moon" class="theme-icon-svg"></i>
+                    <span class="theme-text">Dark Mode</span>
                 </button>
-                <a href="/logout" class="btn btn-secondary btn-sm" onclick="showLoader()">Logout</a>
+                
+                <div class="sidebar-user">
+                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <div class="user-info">
+                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Workspace Panel -->
+        <div class="main-workspace">
+            
+            <!-- Top Header Toolbar strip -->
+            <header class="workspace-header">
+                <div class="header-left">
+                    <button class="sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation Sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-titles">
+                        <h1>Advanced Spending Trends</h1>
+                        <p class="text-muted">Business intelligence and period analysis</p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Scrollable Workspace content -->
+            <div class="workspace-content">
+                
+                <!-- Analytics Header Banner -->
+                <header class="welcome-card animate-fade-in">
+                    <div class="welcome-info">
+                        <p class="welcome-date">BI & FINANCIAL INTELLIGENCE</p>
+                        <h2 class="welcome-title-h2">Analytics and Trends</h2>
+                        <p class="welcome-lead">Visualize weekly cycles, monthly progressions, annual growth, and compare category breakdowns across periods.</p>
+                    </div>
+                    <div class="welcome-summary">
+                        <div class="summary-pill">
+                            <span class="pill-label">Daily Avg ({{ current_month_name }})</span>
+                            <span class="pill-value">₹{{ daily_average }}</span>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- KPI Grid -->
+                <section class="kpi-grid">
+                    <div class="kpi-card spent animate-slide-up" style="--delay: 1;">
+                        <div class="kpi-icon"><i data-lucide="line-chart"></i></div>
+                        <div class="kpi-details">
+                            <h3>Daily Spend Avg</h3>
+                            <p class="kpi-value">₹{{ daily_average }}</p>
+                            <span class="kpi-subtext">this month</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card budget animate-slide-up" style="--delay: 2;">
+                        <div class="kpi-icon"><i data-lucide="compass"></i></div>
+                        <div class="kpi-details">
+                            <h3>Annual Total</h3>
+                            <p class="kpi-value">₹{{ annual_total }}</p>
+                            <span class="kpi-subtext">year {{ current_year }}</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card remaining animate-slide-up" style="--delay: 3;">
+                        <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+                        <div class="kpi-details">
+                            <h3>Peak Month</h3>
+                            <p class="kpi-value">{{ highest_month_name }}</p>
+                            <span class="kpi-subtext">₹{{ highest_month_amount }} spent</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card average animate-slide-up" style="--delay: 4;">
+                        <div class="kpi-icon"><i data-lucide="activity"></i></div>
+                        <div class="kpi-details">
+                            <h3>Lowest Month</h3>
+                            <p class="kpi-value">{{ lowest_month_name }}</p>
+                            <span class="kpi-subtext">₹{{ lowest_month_amount }} spent</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Advanced Analytics Chart Grid -->
+                <section class="panel-card analytics-dashboard-panel animate-fade-in">
+                    <div class="panel-header">
+                        <h2><i data-lucide="bar-chart-3" class="header-icon-inline"></i> Spending Performance Visualizations</h2>
+                    </div>
+                    <div class="panel-body">
+                        <div class="analytics-dashboard-grid">
+                            <!-- Chart 1: Monthly Trend (Line) -->
+                            <div class="chart-box dashboard-chart-card">
+                                <h3>Monthly Spending Trend (Current Year)</h3>
+                                <div class="canvas-container big-canvas">
+                                    <canvas id="monthlyTrendChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Chart 2: Weekly Trend (Bar) -->
+                            <div class="chart-box dashboard-chart-card">
+                                <h3>Weekly Spending Trend (Last 8 Weeks)</h3>
+                                <div class="canvas-container big-canvas">
+                                    <canvas id="weeklyTrendChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Chart 3: Month-over-Month Category Comparison -->
+                            <div class="chart-box dashboard-chart-card">
+                                <h3>MoM Category Breakdown ({{ prev_month_name }} vs. {{ current_month_name }})</h3>
+                                <div class="canvas-container big-canvas">
+                                    <canvas id="categoryComparisonChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Chart 4: Yearly Spending Comparison -->
+                            <div class="chart-box dashboard-chart-card">
+                                <h3>Year-over-Year Totals</h3>
+                                <div class="canvas-container big-canvas">
+                                    <canvas id="yearlyComparisonChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
-    </nav>
-
-    <div class="app-container">
-        <!-- Analytics Header Banner -->
-        <header class="welcome-card animate-fade-in">
-            <div class="welcome-info">
-                <p class="welcome-date">BI & FINANCIAL INTELLIGENCE</p>
-                <h1>Advanced Spending Trends</h1>
-                <p class="welcome-lead">Visualize weekly cycles, monthly progressions, annual growth, and compare category breakdowns across periods.</p>
-            </div>
-            <div class="welcome-summary">
-                <div class="summary-pill">
-                    <span class="pill-label">Daily Avg ({{ current_month_name }})</span>
-                    <span class="pill-value">₹{{ daily_average }}</span>
-                </div>
-            </div>
-        </header>
-
-        <!-- KPI Grid -->
-        <section class="kpi-grid">
-            <div class="kpi-card spent animate-slide-up" style="--delay: 1;">
-                <div class="kpi-icon">📈</div>
-                <div class="kpi-details">
-                    <h3>Daily Spend Avg</h3>
-                    <p class="kpi-value">₹{{ daily_average }}</p>
-                    <span class="kpi-subtext">this month</span>
-                </div>
-            </div>
-
-            <div class="kpi-card budget animate-slide-up" style="--delay: 2;">
-                <div class="kpi-icon">💰</div>
-                <div class="kpi-details">
-                    <h3>Annual Total</h3>
-                    <p class="kpi-value">₹{{ annual_total }}</p>
-                    <span class="kpi-subtext">year {{ current_year }}</span>
-                </div>
-            </div>
-
-            <div class="kpi-card remaining animate-slide-up" style="--delay: 3;">
-                <div class="kpi-icon">🔥</div>
-                <div class="kpi-details">
-                    <h3>Peak Month</h3>
-                    <p class="kpi-value">{{ highest_month_name }}</p>
-                    <span class="kpi-subtext">₹{{ highest_month_amount }} spent</span>
-                </div>
-            </div>
-
-            <div class="kpi-card average animate-slide-up" style="--delay: 4;">
-                <div class="kpi-icon">❄️</div>
-                <div class="kpi-details">
-                    <h3>Lowest Month</h3>
-                    <p class="kpi-value">{{ lowest_month_name }}</p>
-                    <span class="kpi-subtext">₹{{ lowest_month_amount }} spent</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Advanced Analytics Chart Grid -->
-        <section class="panel-card analytics-dashboard-panel animate-fade-in">
-            <div class="panel-header">
-                <h2>📈 Spending Performance Visualizations</h2>
-            </div>
-            <div class="panel-body">
-                <div class="analytics-dashboard-grid">
-                    <!-- Chart 1: Monthly Trend (Line) -->
-                    <div class="chart-box dashboard-chart-card">
-                        <h3>Monthly Spending Trend (Current Year)</h3>
-                        <div class="canvas-container big-canvas">
-                            <canvas id="monthlyTrendChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Chart 2: Weekly Trend (Bar) -->
-                    <div class="chart-box dashboard-chart-card">
-                        <h3>Weekly Spending Trend (Last 8 Weeks)</h3>
-                        <div class="canvas-container big-canvas">
-                            <canvas id="weeklyTrendChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Chart 3: Month-over-Month Category Comparison -->
-                    <div class="chart-box dashboard-chart-card">
-                        <h3>MoM Category Breakdown ({{ prev_month_name }} vs. {{ current_month_name }})</h3>
-                        <div class="canvas-container big-canvas">
-                            <canvas id="categoryComparisonChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Chart 4: Yearly Spending Comparison -->
-                    <div class="chart-box dashboard-chart-card">
-                        <h3>Year-over-Year Totals</h3>
-                        <div class="canvas-container big-canvas">
-                            <canvas id="yearlyComparisonChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
     </div>
 
     <!-- JSON Script Data Blocks for Chart.js -->
