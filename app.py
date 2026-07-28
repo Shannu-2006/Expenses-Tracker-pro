@@ -1,3 +1,5 @@
+import io
+import csv
 from datetime import datetime
 from flask import (
     Flask,
@@ -5,7 +7,9 @@ from flask import (
     request,
     redirect,
     flash,
-    session
+    session,
+    send_file,
+    Response
 )
 
 from flask_sqlalchemy import SQLAlchemy
@@ -14,6 +18,9 @@ from werkzeug.security import (
     generate_password_hash,
     check_password_hash
 )
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 app = Flask(__name__)
 app.secret_key = "expense_tracker_secret"
@@ -91,6 +98,16 @@ class Expense(db.Model):
     category = db.Column(
         db.String(50),
         nullable=False
+    )
+
+    date = db.Column(
+        db.String(10),
+        nullable=True
+    )
+
+    notes = db.Column(
+        db.String(255),
+        nullable=True
     )
 
     user_id = db.Column(
@@ -203,8 +220,6 @@ def delete_budget():
         flash("No budget found for this month.")
 
     return redirect('/')
-
-    return redirect('/login')
 @app.route('/reset_budget')
 def reset_budget():
 
@@ -269,19 +284,247 @@ def set_budget():
     flash("Budget Saved Successfully!")
 
     return redirect('/')
+
+# Helper function to filter expenses for reports
+def get_filtered_expenses_query(user_id, start_date, end_date, category):
+    query = Expense.query.filter_by(user_id=user_id)
+    if category and category != 'all':
+        query = query.filter_by(category=category)
+    if start_date:
+        query = query.filter(Expense.date >= start_date)
+    if end_date:
+        query = query.filter(Expense.date <= end_date)
+    return query.order_by(Expense.date.desc(), Expense.id.desc())
+
+@app.route('/reports')
+def reports():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    category = request.args.get('category', 'all')
+    
+    expenses = get_filtered_expenses_query(session['user_id'], start_date, end_date, category).all()
+    
+    total = sum(e.amount for e in expenses)
+    count = len(expenses)
+    highest = max((e.amount for e in expenses), default=0)
+    average = total // count if count > 0 else 0
+    
+    category_totals = {cat: 0 for cat in ["Food", "Travel", "Rent", "Shopping", "Fun", "Other"]}
+    for e in expenses:
+        if e.category in category_totals:
+            category_totals[e.category] += e.amount
+            
+    return render_template(
+        'reports.html',
+        expenses=expenses,
+        total=total,
+        count=count,
+        highest_expense=highest,
+        average_expense=average,
+        category_totals=category_totals,
+        start_date=start_date,
+        end_date=end_date,
+        category=category
+    )
+
+@app.route('/reports/export/csv')
+def export_csv():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    category = request.args.get('category', 'all')
+    
+    expenses = get_filtered_expenses_query(session['user_id'], start_date, end_date, category).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow(['Date', 'Expense Name', 'Category', 'Amount (INR)', 'Notes'])
+    
+    for e in expenses:
+        writer.writerow([e.date or '-', e.name, e.category, e.amount, e.notes or ''])
+        
+    output.seek(0)
+    
+    filename = f"expense_report_{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename={filename}"}
+    )
+
+@app.route('/reports/export/excel')
+def export_excel():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    category = request.args.get('category', 'all')
+    
+    expenses = get_filtered_expenses_query(session['user_id'], start_date, end_date, category).all()
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Expense Report"
+    
+    # Premium Excel Styling
+    font_title = Font(name='Segoe UI', size=16, bold=True, color='4F46E5')
+    font_header = Font(name='Segoe UI', size=11, bold=True, color='FFFFFF')
+    font_data = Font(name='Segoe UI', size=11)
+    font_total = Font(name='Segoe UI', size=11, bold=True)
+    
+    fill_header = PatternFill(start_color='4F46E5', end_color='4F46E5', fill_type='solid')
+    fill_summary = PatternFill(start_color='F3F4F6', end_color='F3F4F6', fill_type='solid')
+    
+    border_thin = Border(
+        left=Side(style='thin', color='E5E7EB'),
+        right=Side(style='thin', color='E5E7EB'),
+        top=Side(style='thin', color='E5E7EB'),
+        bottom=Side(style='thin', color='E5E7EB')
+    )
+    border_double_bottom = Border(
+        top=Side(style='thin', color='9CA3AF'),
+        bottom=Side(style='double', color='111827')
+    )
+    
+    align_center = Alignment(horizontal='center', vertical='center')
+    align_left = Alignment(horizontal='left', vertical='center')
+    align_right = Alignment(horizontal='right', vertical='center')
+    
+    # Title row
+    ws.merge_cells('A1:E1')
+    ws['A1'] = "EXPENSE TRACKER PRO - FINANCIAL STATEMENT"
+    ws['A1'].font = font_title
+    ws['A1'].alignment = align_left
+    ws.row_dimensions[1].height = 30
+    
+    ws['A2'] = f"Generated On: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    ws['A2'].font = Font(name='Segoe UI', size=9, italic=True, color='6B7280')
+    ws.row_dimensions[2].height = 18
+    
+    # Selection summary
+    ws['A4'] = "Start Date:"
+    ws['A4'].font = font_total
+    ws['B4'] = start_date if start_date else "All"
+    ws['B4'].font = font_data
+    
+    ws['C4'] = "End Date:"
+    ws['C4'].font = font_total
+    ws['D4'] = end_date if end_date else "All"
+    ws['D4'].font = font_data
+    
+    ws['A5'] = "Category:"
+    ws['A5'].font = font_total
+    ws['B5'] = category.capitalize()
+    ws['B5'].font = font_data
+    
+    ws.row_dimensions[4].height = 20
+    ws.row_dimensions[5].height = 20
+    
+    # Headers
+    headers = ['Date', 'Expense Name', 'Category', 'Amount (INR)', 'Notes']
+    for col_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=7, column=col_idx, value=h)
+        cell.font = font_header
+        cell.fill = fill_header
+        cell.alignment = align_center if col_idx in [1, 3] else (align_right if col_idx == 4 else align_left)
+        cell.border = border_thin
+    ws.row_dimensions[7].height = 25
+    
+    # Data Rows
+    current_row = 8
+    for e in expenses:
+        ws.cell(row=current_row, column=1, value=e.date or '-').alignment = align_center
+        ws.cell(row=current_row, column=2, value=e.name).alignment = align_left
+        ws.cell(row=current_row, column=3, value=e.category).alignment = align_center
+        
+        amount_cell = ws.cell(row=current_row, column=4, value=e.amount)
+        amount_cell.alignment = align_right
+        amount_cell.number_format = '₹#,##0'
+        
+        ws.cell(row=current_row, column=5, value=e.notes or '-').alignment = align_left
+        
+        for col_idx in range(1, 6):
+            c = ws.cell(row=current_row, column=col_idx)
+            c.font = font_data
+            c.border = border_thin
+            
+        ws.row_dimensions[current_row].height = 20
+        current_row += 1
+        
+    # Total Spending Row
+    ws.cell(row=current_row, column=3, value="Total Spending:").font = font_total
+    ws.cell(row=current_row, column=3).alignment = align_right
+    
+    total_cell = ws.cell(row=current_row, column=4, value=f"=SUM(D8:D{current_row-1})")
+    total_cell.font = font_total
+    total_cell.alignment = align_right
+    total_cell.border = border_double_bottom
+    total_cell.number_format = '₹#,##0'
+    
+    ws.row_dimensions[current_row].height = 24
+    
+    # Adjust widths
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            if cell.row < 7:
+                continue
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+        
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+    
+    filename = f"expense_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        file_stream,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/reports/print')
+def print_report():
+    if 'user_id' not in session:
+        return redirect('/login')
+        
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    category = request.args.get('category', 'all')
+    
+    expenses = get_filtered_expenses_query(session['user_id'], start_date, end_date, category).all()
+    total = sum(e.amount for e in expenses)
+    
     current_month = datetime.now().month
     current_year = datetime.now().year
-
     budget = Budget.query.filter_by(
         user_id=session['user_id'],
         month=current_month,
         year=current_year
     ).first()
-
-    budget_amount = 0
-
-    if budget:
-        budget_amount = budget.amount
+    budget_amount = budget.amount if budget else 0
+    
+    return render_template(
+        'print_report.html',
+        expenses=expenses,
+        total=total,
+        budget_amount=budget_amount,
+        start_date=start_date,
+        end_date=end_date,
+        category=category,
+        month_name=datetime.now().strftime("%B"),
+        current_year=current_year
+    )
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -294,11 +537,18 @@ def home():
         name = request.form['name']
         amount = request.form['amount']
         category = request.form['category']
+        date = request.form.get('date')
+        notes = request.form.get('notes')
+
+        if not date:
+            date = datetime.now().strftime('%Y-%m-%d')
 
         expense = Expense(
             name=name,
             amount=int(amount),
             category=category,
+            date=date,
+            notes=notes,
             user_id=session['user_id']
         )
 
@@ -471,6 +721,13 @@ def update(id):
         request.form['amount']
     )
     expense.category = request.form['category']
+    
+    date = request.form.get('date')
+    notes = request.form.get('notes')
+    
+    if date:
+        expense.date = date
+    expense.notes = notes
 
     db.session.commit()
 
@@ -499,4 +756,17 @@ def delete(id):
 
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        try:
+            inspector = db.inspect(db.engine)
+            columns = [c['name'] for c in inspector.get_columns('expense')]
+            if 'date' not in columns:
+                db.session.execute(db.text("ALTER TABLE expense ADD COLUMN date TEXT"))
+            if 'notes' not in columns:
+                db.session.execute(db.text("ALTER TABLE expense ADD COLUMN notes TEXT"))
+            db.session.commit()
+        except Exception as e:
+            print("Auto-migration result:", e)
+            db.session.rollback()
     app.run(debug=True)

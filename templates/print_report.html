@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Statement — Expense Tracker Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+        body {
+            background-color: #ffffff;
+            color: #111827;
+            padding: 40px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .print-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #4f46e5;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .brand-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #4f46e5;
+        }
+        .brand-sub {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        .meta-info {
+            text-align: right;
+            font-size: 12px;
+            color: #4b5563;
+        }
+        .meta-info h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 5px;
+        }
+        .filter-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            background-color: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .summary-item h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+        .summary-item p {
+            font-size: 16px;
+            font-weight: 700;
+            color: #111827;
+        }
+        .summary-item p.budget-total {
+            color: #4f46e5;
+        }
+        .summary-item p.spent-total {
+            color: #ef4444;
+        }
+        .summary-item p.remaining-total {
+            color: #10b981;
+        }
+        .filter-tags {
+            font-size: 12px;
+            margin-bottom: 20px;
+            color: #4b5563;
+        }
+        .filter-tags strong {
+            color: #111827;
+        }
+        .statement-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 40px;
+        }
+        .statement-table th {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+            padding: 10px 15px;
+            border-bottom: 2px solid #e5e7eb;
+            text-align: left;
+        }
+        .statement-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e5e7eb;
+            color: #374151;
+        }
+        .statement-table tr:last-child td {
+            border-bottom: none;
+        }
+        .statement-table th.num-col,
+        .statement-table td.num-col {
+            text-align: right;
+        }
+        .total-row {
+            font-weight: 700;
+            background-color: #f9fafb;
+        }
+        .total-row td {
+            border-top: 2px solid #e5e7eb;
+            border-bottom: 2px double #111827 !important;
+            font-size: 15px;
+            color: #111827;
+        }
+        .category-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+        }
+        .print-footer {
+            margin-top: 60px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        
+        /* CSS print layouts modifications */
+        @media print {
+            body {
+                padding: 0;
+                font-size: 12px;
+            }
+            .brand-title {
+                color: #000000 !important;
+            }
+            .brand-sub {
+                color: #000000 !important;
+            }
+            .statement-table th {
+                background-color: #e5e7eb !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .total-row td {
+                background-color: #f3f4f6 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .filter-summary {
+                background-color: #f3f4f6 !important;
+                border-color: #d1d5db !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-header">
+        <div>
+            <h1 class="brand-title">ExpenseTracker Pro</h1>
+            <p class="brand-sub">Financial Ledger Summary Statement</p>
+        </div>
+        <div class="meta-info">
+            <h2>ACCOUNT STATEMENT</h2>
+            <p>Generated: <strong>{{ datetime.now().strftime('%B %d, %Y') }}</strong></p>
+            <p>Member Profile: <strong>{{ session['username'] }}</strong></p>
+        </div>
+    </div>
+
+    <div class="filter-tags">
+        <p>
+            Report Parameters: 
+            Category: <strong>{{ category.capitalize() }}</strong> | 
+            Date Bounds: <strong>{{ start_date if start_date else 'All time' }}</strong> to <strong>{{ end_date if end_date else 'Present' }}</strong>
+        </p>
+    </div>
+
+    <!-- Summary Box -->
+    <div class="filter-summary">
+        <div class="summary-item">
+            <h3>Monthly Budget</h3>
+            <p class="budget-total">₹{{ budget_amount }}</p>
+        </div>
+        <div class="summary-item">
+            <h3>Compiled Spending</h3>
+            <p class="spent-total">₹{{ total }}</p>
+        </div>
+        <div class="summary-item">
+            <h3>Unspent Margin</h3>
+            <p class="remaining-total">₹{{ budget_amount - total if budget_amount - total > 0 else 0 }}</p>
+        </div>
+    </div>
+
+    <!-- Expenses List -->
+    <table class="statement-table">
+        <thead>
+            <tr>
+                <th style="width: 15%">Date</th>
+                <th style="width: 35%">Expense Item Name</th>
+                <th style="width: 15%">Category</th>
+                <th style="width: 15%" class="num-col">Amount</th>
+                <th style="width: 20%">Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for expense in expenses %}
+            <tr>
+                <td>{{ expense.date or '-' }}</td>
+                <td><strong>{{ expense.name }}</strong></td>
+                <td>
+                    <span class="category-badge">{{ expense.category }}</span>
+                </td>
+                <td class="num-col">₹{{ expense.amount }}</td>
+                <td>{{ expense.notes or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 30px; color: #6b7280;">No expenses matched statement parameters.</td>
+            </tr>
+            {% endfor %}
+            
+            {% if expenses %}
+            <tr class="total-row">
+                <td colspan="3" style="text-align: right;">Total Compiled Expenses:</td>
+                <td class="num-col">₹{{ total }}</td>
+                <td></td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <div class="print-footer">
+        <p>Generated via Expense Tracker Pro. This is a computer generated document and does not require signatures.</p>
+        <p>Page 1 of 1</p>
+    </div>
+
+    <!-- Auto print dialog on page load -->
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        };
+    </script>
+</body>
+</html>
