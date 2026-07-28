@@ -237,8 +237,8 @@ def login():
 
 @app.route('/logout')
 def logout():
-
     session.clear()
+    return redirect('/login')
 @app.route('/delete_budget')
 def delete_budget():
     if 'user_id' not in session:
