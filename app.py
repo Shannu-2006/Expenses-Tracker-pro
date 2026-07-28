@@ -46,6 +46,7 @@ from werkzeug.security import (
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
 app.secret_key = "expense_tracker_secret"
@@ -615,7 +616,7 @@ def export_excel():
     # Adjust widths
     for col in ws.columns:
         max_len = 0
-        col_letter = col[0].column_letter
+        col_letter = get_column_letter(col[0].column)
         for cell in col:
             if cell.row < 7:
                 continue
@@ -665,7 +666,8 @@ def print_report():
         end_date=end_date,
         category=category,
         month_name=datetime.now().strftime("%B"),
-        current_year=current_year
+        current_year=current_year,
+        datetime=datetime
     )
 
 @app.route('/analytics')
@@ -941,7 +943,7 @@ def send_email_async(to_email, subject, body_html):
         
         if not smtp_server or not smtp_user or not smtp_password:
             print("\n" + "="*60)
-            print("📧 MOCK EMAIL NOTIFICATION DISPATCHED")
+            print("[EMAIL] MOCK EMAIL NOTIFICATION DISPATCHED")
             print(f"Recipient : {to_email}")
             print(f"Subject   : {subject}")
             print(f"Body      :\n{body_html}")
@@ -962,9 +964,9 @@ def send_email_async(to_email, subject, body_html):
             server.login(smtp_user, smtp_password)
             server.sendmail(smtp_user, to_email, msg.as_string())
             server.quit()
-            print(f"📧 Notification email successfully sent to {to_email}")
+            print(f"[EMAIL] Notification email successfully sent to {to_email}")
         except Exception as e:
-            print(f"❌ Failed to dispatch email notification: {e}")
+            print(f"[ERROR] Failed to dispatch email notification: {e}")
 
     threading.Thread(target=send_thread).start()
 

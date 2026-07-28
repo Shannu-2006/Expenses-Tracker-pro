@@ -1723,6 +1723,8 @@ body {
     align-items: center;
     padding: 0 1.5rem;
     flex-shrink: 0;
+    position: relative;
+    z-index: 100;
 }
 .header-left {
     display: flex;
