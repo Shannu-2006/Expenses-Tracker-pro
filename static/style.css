@@ -2062,3 +2062,141 @@ body {
     text-decoration: underline;
 }
 }
+
+/* ==========================================================================
+   Notifications Center Dropdown Styles (Version 9)
+   ========================================================================== */
+.header-notifications-wrapper {
+    position: relative;
+    display: inline-block;
+}
+.notifications-bell-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border);
+    background-color: var(--card-bg);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.notifications-bell-btn:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+    background-color: var(--primary-light);
+}
+.notifications-bell-btn i {
+    width: 18px;
+    height: 18px;
+}
+.bell-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background-color: var(--danger);
+    color: #ffffff;
+    border-radius: var(--radius-full);
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--card-bg);
+}
+.notifications-dropdown-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 320px;
+    max-height: 400px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.notifications-dropdown-panel.open {
+    display: flex;
+}
+.notif-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--background);
+}
+.notif-header h3 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text);
+}
+.btn-read-all {
+    font-size: 0.75rem;
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+    transition: var(--transition);
+}
+.btn-read-all:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+.notif-body {
+    overflow-y: auto;
+    max-height: 320px;
+}
+.notif-empty-state {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.notif-item {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    transition: var(--transition);
+    text-align: left;
+}
+.notif-item:last-child {
+    border-bottom: none;
+}
+.notif-item:hover {
+    background-color: var(--background);
+}
+.notif-item.unread {
+    background-color: var(--primary-light);
+    border-left: 3px solid var(--primary);
+}
+.notif-message {
+    margin: 0;
+    font-weight: 500;
+}
+.notif-time {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+}

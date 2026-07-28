@@ -998,6 +998,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hook OCR receipt scanner
     initReceiptScanner();
     
+    // Fetch notifications badge & list on load (Version 9)
+    fetchNotifications();
+    
+    // Auto-dismiss notification dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        const wrapper = document.querySelector(".header-notifications-wrapper");
+        const panel = document.getElementById("notifDropdown");
+        if (wrapper && panel && panel.classList.contains("open") && !wrapper.contains(e.target)) {
+            panel.classList.remove("open");
+        }
+    });
+    
     // Auto-dismiss standard Flash message Toast on load if visible
     const stdToast = document.getElementById("toastMessage");
     if (stdToast) {
@@ -1017,3 +1029,102 @@ document.addEventListener("DOMContentLoaded", () => {
     // Dismiss loading overlay on complete load
     hideLoader();
 });
+
+// --------------------------------------------------------------------------
+// Notification Center & Dropdown Functions (Version 9)
+// --------------------------------------------------------------------------
+function toggleNotificationsDropdown() {
+    const panel = document.getElementById("notifDropdown");
+    if (!panel) return;
+    panel.classList.toggle("open");
+    
+    if (panel.classList.contains("open")) {
+        fetchNotifications();
+    }
+}
+
+function fetchNotifications() {
+    fetch("/notifications")
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                updateNotificationsUI(data.notifications, data.unread_count);
+            }
+        })
+        .catch(err => console.error("Error fetching notifications:", err));
+}
+
+function updateNotificationsUI(notifications, unreadCount) {
+    const badge = document.getElementById("notifBadge");
+    const container = document.getElementById("notifListContainer");
+    
+    if (badge) {
+        if (unreadCount > 0) {
+            badge.textContent = unreadCount;
+            badge.style.display = "flex";
+        } else {
+            badge.style.display = "none";
+        }
+    }
+    
+    if (container) {
+        if (notifications.length === 0) {
+            container.innerHTML = `
+                <div class="notif-empty-state">
+                    <i data-lucide="bell-off" style="width: 20px; height: 20px; color: var(--text-muted);"></i>
+                    <span>No notifications yet</span>
+                </div>`;
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            return;
+        }
+        
+        let notifHtml = "";
+        notifications.forEach(n => {
+            const unreadClass = n.is_read ? "" : "unread";
+            notifHtml += `
+                <div class="notif-item ${unreadClass}">
+                    <p class="notif-message">${n.message}</p>
+                    <span class="notif-time">${n.timestamp}</span>
+                </div>`;
+        });
+        container.innerHTML = notifHtml;
+        
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+}
+
+function ajaxReadAllNotifications() {
+    fetch("/notifications/read-all")
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                fetchNotifications();
+                showToast("All notifications marked as read.");
+            }
+        })
+        .catch(err => console.error("Error reading all notifications:", err));
+}
+
+function ajaxEmailStatement() {
+    showLoader();
+    fetch("/notifications/email-summary")
+        .then(res => res.json())
+        .then(data => {
+            hideLoader();
+            if (data.success) {
+                showToast(data.message);
+                fetchNotifications(); // Refresh list to show statement emailed alert
+            } else {
+                alert(data.message || "Failed to dispatch statement email.");
+            }
+        })
+        .catch(err => {
+            hideLoader();
+            console.error("Error emailing statement:", err);
+            showToast("Network error emailing statement.");
+        });
+}

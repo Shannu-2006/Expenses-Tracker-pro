@@ -2,6 +2,10 @@ import io
 import csv
 import os
 import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import threading
 from datetime import datetime
 from flask import (
     Flask,
@@ -136,6 +140,14 @@ class Expense(db.Model):
         db.ForeignKey('user.id'),
         nullable=False
     )
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    is_read = db.Column(db.Boolean, default=False)
+    identifier = db.Column(db.String(50), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -919,6 +931,219 @@ def scan_receipt():
             "message": f"Error scanning receipt: {str(e)}"
         }), 500
 
+# Asynchronous background email sender using python threading (Version 9)
+def send_email_async(to_email, subject, body_html):
+    def send_thread():
+        smtp_server = os.environ.get("MAIL_SERVER")
+        smtp_port = os.environ.get("MAIL_PORT", 587)
+        smtp_user = os.environ.get("MAIL_USERNAME")
+        smtp_password = os.environ.get("MAIL_PASSWORD")
+        
+        if not smtp_server or not smtp_user or not smtp_password:
+            print("\n" + "="*60)
+            print("📧 MOCK EMAIL NOTIFICATION DISPATCHED")
+            print(f"Recipient : {to_email}")
+            print(f"Subject   : {subject}")
+            print(f"Body      :\n{body_html}")
+            print("="*60 + "\n")
+            return
+
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = smtp_user
+            msg['To'] = to_email
+
+            part = MIMEText(body_html, 'html')
+            msg.attach(part)
+
+            server = smtplib.SMTP(smtp_server, int(smtp_port))
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_user, to_email, msg.as_string())
+            server.quit()
+            print(f"📧 Notification email successfully sent to {to_email}")
+        except Exception as e:
+            print(f"❌ Failed to dispatch email notification: {e}")
+
+    threading.Thread(target=send_thread).start()
+
+# Budget threshold warning and email alerts checker helper
+def check_budget_thresholds(user_id, total_spent, budget_amount):
+    if budget_amount <= 0:
+        return
+        
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    percentage = (total_spent / budget_amount) * 100
+    
+    # 1. 100% Exceeded alert
+    if percentage >= 100:
+        tag_100 = f"budget_exceeded_100_{current_year}_{current_month}"
+        exists = Notification.query.filter_by(user_id=user_id, identifier=tag_100).first()
+        if not exists:
+            readable_msg = f"🚨 Danger: Monthly budget limit exceeded! Spent ₹{total_spent} of ₹{budget_amount} ({percentage:.1f}%)."
+            notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_100)
+            db.session.add(notif)
+            db.session.commit()
+            
+            user = User.query.get(user_id)
+            if user:
+                subject = f"🚨 URGENT: Budget Limit Exceeded — ExpenseTracker Pro"
+                body_html = f"""
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+                    <h2 style="color: #ef4444;">Budget Exceeded Alert</h2>
+                    <p>Hello <strong>{user.username}</strong>,</p>
+                    <p>This is an automated alert from your ExpenseTracker Pro ledger.</p>
+                    <p style="background: #fef2f2; border: 1px solid #fee2e2; padding: 15px; border-radius: 8px; font-size: 16px;">
+                        🚨 You have exceeded your monthly budget. You have spent <strong>₹{total_spent}</strong> of your monthly limit of <strong>₹{budget_amount}</strong>.
+                    </p>
+                    <p>Please review your expenses or adjust your budget targets to maintain financial control.</p>
+                    <br>
+                    <p>Regards,<br>ExpenseTracker Pro Team</p>
+                </div>
+                """
+                send_email_async(user.email, subject, body_html)
+                
+    # 2. 80% Warning alert
+    elif percentage >= 80:
+        tag_80 = f"budget_warning_80_{current_year}_{current_month}"
+        exists = Notification.query.filter_by(user_id=user_id, identifier=tag_80).first()
+        if not exists:
+            readable_msg = f"⚠️ Warning: Spent {percentage:.1f}% of your monthly budget (₹{total_spent} of ₹{budget_amount})."
+            notif = Notification(message=readable_msg, user_id=user_id, identifier=tag_80)
+            db.session.add(notif)
+            db.session.commit()
+            
+            user = User.query.get(user_id)
+            if user:
+                subject = f"⚠️ WARNING: Budget Approaching Limit — ExpenseTracker Pro"
+                body_html = f"""
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+                    <h2 style="color: #eab308;">Budget Threshold Warning</h2>
+                    <p>Hello <strong>{user.username}</strong>,</p>
+                    <p>This is an automated warning from your ExpenseTracker Pro ledger.</p>
+                    <p style="background: #fefcbf; border: 1px solid #fef08a; padding: 15px; border-radius: 8px; font-size: 16px;">
+                        ⚠️ You have spent <strong>{percentage:.1f}%</strong> of your monthly budget limit. You have spent <strong>₹{total_spent}</strong> of your set monthly limit of <strong>₹{budget_amount}</strong>.
+                    </p>
+                    <p>Try tracking your category totals to keep expenditures low.</p>
+                    <br>
+                    <p>Regards,<br>ExpenseTracker Pro Team</p>
+                </div>
+                """
+                send_email_async(user.email, subject, body_html)
+
+# API - Fetch recent notifications list
+@app.route('/notifications')
+def get_notifications():
+    if 'user_id' not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    notifs = Notification.query.filter_by(user_id=session['user_id']).order_by(Notification.id.desc()).limit(15).all()
+    unread_count = Notification.query.filter_by(user_id=session['user_id'], is_read=False).count()
+    
+    notif_list = [{
+        "id": n.id,
+        "message": n.message,
+        "timestamp": n.timestamp.strftime("%b %d, %H:%M"),
+        "is_read": n.is_read
+    } for n in notifs]
+    
+    return jsonify({
+        "success": True,
+        "notifications": notif_list,
+        "unread_count": unread_count
+    })
+
+# API - Mark all notifications as read
+@app.route('/notifications/read-all')
+def read_all_notifications():
+    if 'user_id' not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    unread = Notification.query.filter_by(user_id=session['user_id'], is_read=False).all()
+    for u in unread:
+        u.is_read = True
+    db.session.commit()
+    return jsonify({"success": True, "message": "All notifications marked as read"})
+
+# API - Trigger and dispatch monthly summary email statement
+@app.route('/notifications/email-summary')
+def email_summary():
+    if 'user_id' not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+        
+    user = User.query.get(session['user_id'])
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+        
+    stats = get_user_stats(session['user_id'])
+    
+    rows_html = ""
+    for e in stats['expenses']:
+        rows_html += f"""
+        <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{e['date']}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>{e['name']}</strong></td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{e['category']}</span></td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹{e['amount']}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{e['notes'] or '-'}</td>
+        </tr>
+        """
+        
+    subject = f"📊 Monthly Ledger Summary Statement — {stats['month_name']} {stats['current_year']}"
+    body_html = f"""
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #4f46e5; border-bottom: 2px solid #4f46e5; padding-bottom: 10px; margin-top: 0;">ExpenseTracker Pro Statement</h2>
+        <p>Hello <strong>{user.username}</strong>,</p>
+        <p>Here is your financial ledger report summary compile for the month of <strong>{stats['month_name']} {stats['current_year']}</strong>.</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; display: inline-block; width: 30%;">
+                <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Total Spent</span>
+                <div style="font-size: 18px; font-weight: bold; color: #ef4444; margin-top: 4px;">₹{stats['total']}</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; display: inline-block; width: 30%;">
+                <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Monthly Budget</span>
+                <div style="font-size: 18px; font-weight: bold; color: #4f46e5; margin-top: 4px;">₹{stats['budget_amount']}</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; display: inline-block; width: 30%;">
+                <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Remaining</span>
+                <div style="font-size: 18px; font-weight: bold; color: #10b981; margin-top: 4px;">₹{stats['remaining_budget']}</div>
+            </div>
+        </div>
+        
+        <h3>Compiled Ledger Items</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="background: #f1f5f9; text-align: left;">
+                    <th style="padding: 10px; font-weight: 600;">Date</th>
+                    <th style="padding: 10px; font-weight: 600;">Name</th>
+                    <th style="padding: 10px; font-weight: 600;">Category</th>
+                    <th style="padding: 10px; font-weight: 600; text-align: right;">Amount</th>
+                    <th style="padding: 10px; font-weight: 600;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html if rows_html else '<tr><td colspan="5" style="padding: 20px; text-align: center; color: #94a3b8;">No expenses recorded this month.</td></tr>'}
+            </tbody>
+        </table>
+        
+        <br>
+        <p style="font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
+            This statement was generated and dispatched automatically via ExpenseTracker Pro.
+        </p>
+    </div>
+    """
+    
+    send_email_async(user.email, subject, body_html)
+    
+    tag_summary = f"statement_email_{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}"
+    readable_msg = f"📧 Statement Dispatched: Emailed summary for {stats['month_name']} {stats['current_year']} to {user.email}."
+    notif = Notification(message=readable_msg, user_id=session['user_id'], identifier=tag_summary)
+    db.session.add(notif)
+    db.session.commit()
+    
+    return jsonify({"success": True, "message": f"Summary statement email dispatched to {user.email}!"})
+
 @app.route('/', methods=['GET', 'POST'])
 def home():
 
@@ -947,6 +1172,28 @@ def home():
 
         db.session.add(expense)
         db.session.commit()
+
+        # Check budget thresholds warnings (Version 9)
+        try:
+            current_month = datetime.now().month
+            current_year = datetime.now().year
+            budget = Budget.query.filter_by(user_id=session['user_id'], month=current_month, year=current_year).first()
+            budget_amount = budget.amount if budget else 0
+            
+            # Recalculate current month total spent
+            expenses = Expense.query.filter_by(user_id=session['user_id']).all()
+            current_month_total = 0
+            for e in expenses:
+                if e.date:
+                    try:
+                        dt = datetime.strptime(e.date, '%Y-%m-%d')
+                        if dt.year == current_year and dt.month == current_month:
+                            current_month_total += e.amount
+                    except ValueError:
+                        pass
+            check_budget_thresholds(session['user_id'], current_month_total, budget_amount)
+        except Exception as e_thresh:
+            print("Threshold warning check error:", e_thresh)
 
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
@@ -1130,6 +1377,27 @@ def update(id):
     expense.notes = notes
 
     db.session.commit()
+
+    # Check budget thresholds warnings (Version 9)
+    try:
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        budget = Budget.query.filter_by(user_id=session['user_id'], month=current_month, year=current_year).first()
+        budget_amount = budget.amount if budget else 0
+        
+        expenses = Expense.query.filter_by(user_id=session['user_id']).all()
+        current_month_total = 0
+        for e in expenses:
+            if e.date:
+                try:
+                    dt = datetime.strptime(e.date, '%Y-%m-%d')
+                    if dt.year == current_year and dt.month == current_month:
+                        current_month_total += e.amount
+                except ValueError:
+                    pass
+        check_budget_thresholds(session['user_id'], current_month_total, budget_amount)
+    except Exception as e_thresh:
+        print("Threshold warning check error on update:", e_thresh)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({
