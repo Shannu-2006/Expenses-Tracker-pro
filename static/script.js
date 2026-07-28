@@ -1033,7 +1033,10 @@ document.addEventListener("DOMContentLoaded", () => {
 // --------------------------------------------------------------------------
 // Notification Center & Dropdown Functions (Version 9)
 // --------------------------------------------------------------------------
-function toggleNotificationsDropdown() {
+function toggleNotificationsDropdown(event) {
+    if (event) {
+        event.stopPropagation();
+    }
     const panel = document.getElementById("notifDropdown");
     if (!panel) return;
     panel.classList.toggle("open");
