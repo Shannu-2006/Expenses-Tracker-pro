@@ -6,7 +6,9 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
+import jwt
+from functools import wraps
 from flask import (
     Flask,
     render_template,
@@ -1531,29 +1533,311 @@ def settings():
         user=user
     )
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+# --------------------------------------------------------------------------
+# REST API & Token Authentication Endpoints (Version 10)
+# --------------------------------------------------------------------------
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(" ")[1]
+        
+        if not token:
+            return jsonify({'success': False, 'message': 'Token is missing!'}), 401
+        
         try:
-            inspector = db.inspect(db.engine)
-            columns = [c['name'] for c in inspector.get_columns('expense')]
-            if 'date' not in columns:
-                db.session.execute(db.text("ALTER TABLE expense ADD COLUMN date TEXT"))
-            if 'notes' not in columns:
-                db.session.execute(db.text("ALTER TABLE expense ADD COLUMN notes TEXT"))
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            current_user = User.query.get(data['user_id'])
+            if not current_user:
+                return jsonify({'success': False, 'message': 'User not found!'}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({'success': False, 'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'success': False, 'message': 'Token is invalid!'}), 401
             
-            # Budget table category migration (Option B)
-            budget_columns = [c['name'] for c in inspector.get_columns('budget')]
-            if 'category' not in budget_columns:
-                db.session.execute(db.text("ALTER TABLE budget ADD COLUMN category TEXT"))
-                
-            # User table threshold migration (Option B)
-            user_columns = [c['name'] for c in inspector.get_columns('user')]
-            if 'threshold' not in user_columns:
-                db.session.execute(db.text("ALTER TABLE user ADD COLUMN threshold INTEGER DEFAULT 80"))
-                
-            db.session.commit()
-        except Exception as e:
-            print("Auto-migration result:", e)
-            db.session.rollback()
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json() or {}
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not username or not email or not password:
+        return jsonify({'success': False, 'message': 'Missing required fields!'}), 400
+
+    existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
+    if existing_user:
+        return jsonify({'success': False, 'message': 'Username or Email already registered!'}), 400
+
+    hashed_password = generate_password_hash(password)
+    new_user = User(username=username, email=email, password=hashed_password)
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'User registered successfully!'}), 201
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json() or {}
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'success': False, 'message': 'Missing username or password!'}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({'success': False, 'message': 'Invalid username or password!'}), 401
+
+    # Issue JWT token
+    token = jwt.encode({
+        'user_id': user.id,
+        'exp': datetime.utcnow() + timedelta(hours=24)
+    }, app.config['SECRET_KEY'], algorithm='HS256')
+
+    return jsonify({
+        'success': True,
+        'token': token,
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'threshold': user.threshold
+        }
+    })
+
+@app.route('/api/stats', methods=['GET'])
+@token_required
+def api_stats(current_user):
+    stats = get_user_stats(current_user.id)
+    # Serialize expenses inside stats to JSON safe dictionary format
+    serialized_expenses = []
+    for e in stats['expenses']:
+        serialized_expenses.append({
+            'id': e.id,
+            'name': e.name,
+            'amount': e.amount,
+            'category': e.category,
+            'date': e.date,
+            'notes': e.notes or ''
+        })
+    stats['expenses'] = serialized_expenses
+    return jsonify({'success': True, 'stats': stats})
+
+@app.route('/api/expenses', methods=['GET', 'POST'])
+@token_required
+def api_expenses(current_user):
+    if request.method == 'GET':
+        expenses = Expense.query.filter_by(user_id=current_user.id).order_by(Expense.id.desc()).all()
+        output = []
+        for e in expenses:
+            output.append({
+                'id': e.id,
+                'name': e.name,
+                'amount': e.amount,
+                'category': e.category,
+                'date': e.date,
+                'notes': e.notes or ''
+            })
+        return jsonify(output)
+
+    elif request.method == 'POST':
+        data = request.get_json() or {}
+        name = data.get('name')
+        amount = data.get('amount')
+        category = data.get('category')
+        date = data.get('date')
+        notes = data.get('notes', '')
+
+        if not name or amount is None or not category:
+            return jsonify({'success': False, 'message': 'Missing required fields!'}), 400
+
+        if not date:
+            date = datetime.now().strftime('%Y-%m-%d')
+
+        expense = Expense(
+            name=name,
+            amount=int(amount),
+            category=category,
+            date=date,
+            notes=notes,
+            user_id=current_user.id
+        )
+        db.session.add(expense)
+        db.session.commit()
+
+        # Trigger budget threshold warning checks (asynchronous)
+        try:
+            stats = get_user_stats(current_user.id)
+            check_budget_thresholds(current_user.id, stats['total'], stats['budget_amount'])
+        except Exception as e_thresh:
+            print("API threshold checking error:", e_thresh)
+
+        return jsonify({
+            'success': True,
+            'message': 'Expense created successfully!',
+            'expense': {
+                'id': expense.id,
+                'name': expense.name,
+                'amount': expense.amount,
+                'category': expense.category,
+                'date': expense.date,
+                'notes': expense.notes or ''
+            }
+        }), 201
+
+@app.route('/api/expenses/<int:id>', methods=['PUT', 'DELETE'])
+@token_required
+def api_expense_detail(current_user, id):
+    expense = Expense.query.filter_by(id=id, user_id=current_user.id).first()
+    if not expense:
+        return jsonify({'success': False, 'message': 'Expense not found!'}), 404
+
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        if 'name' in data:
+            expense.name = data['name']
+        if 'amount' in data:
+            expense.amount = int(data['amount'])
+        if 'category' in data:
+            expense.category = data['category']
+        if 'date' in data:
+            expense.date = data['date']
+        if 'notes' in data:
+            expense.notes = data['notes']
+
+        db.session.commit()
+
+        # Recalculate check thresholds
+        try:
+            stats = get_user_stats(current_user.id)
+            check_budget_thresholds(current_user.id, stats['total'], stats['budget_amount'])
+        except Exception as e_thresh:
+            print("API threshold checking error:", e_thresh)
+
+        return jsonify({
+            'success': True,
+            'message': 'Expense updated successfully!',
+            'expense': {
+                'id': expense.id,
+                'name': expense.name,
+                'amount': expense.amount,
+                'category': expense.category,
+                'date': expense.date,
+                'notes': expense.notes or ''
+            }
+        })
+
+    elif request.method == 'DELETE':
+        db.session.delete(expense)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Expense deleted successfully!'})
+
+@app.route('/api/budgets', methods=['GET', 'POST', 'DELETE'])
+@token_required
+def api_budgets(current_user):
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+
+    if request.method == 'GET':
+        budgets = Budget.query.filter_by(user_id=current_user.id, month=current_month, year=current_year).all()
+        categories = {}
+        global_budget = 0
+        for b in budgets:
+            if b.category:
+                categories[b.category] = b.amount
+            else:
+                global_budget = b.amount
+        return jsonify({
+            'global': global_budget,
+            'categories': categories
+        })
+
+    elif request.method == 'POST':
+        data = request.get_json() or {}
+        amount = data.get('amount')
+        category = data.get('category', '')
+
+        if amount is None:
+            return jsonify({'success': False, 'message': 'Missing amount!'}), 400
+
+        if category == 'global':
+            category = ''
+
+        budget = Budget.query.filter_by(
+            user_id=current_user.id,
+            month=current_month,
+            year=current_year,
+            category=category
+        ).first()
+
+        if budget:
+            budget.amount = int(amount)
+        else:
+            budget = Budget(
+                amount=int(amount),
+                month=current_month,
+                year=current_year,
+                category=category,
+                user_id=current_user.id
+            )
+            db.session.add(budget)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Budget set successfully!'})
+
+    elif request.method == 'DELETE':
+        data = request.get_json() or {}
+        category = data.get('category', '')
+        if category == 'global':
+            category = ''
+
+        budget = Budget.query.filter_by(
+            user_id=current_user.id,
+            month=current_month,
+            year=current_year,
+            category=category
+        ).first()
+
+        if not budget:
+            return jsonify({'success': False, 'message': 'Budget not found!'}), 404
+
+        db.session.delete(budget)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Budget deleted successfully!'})
+
+# Run database tables self-healing migrations at startup module load
+with app.app_context():
+    db.create_all()
+    try:
+        inspector = db.inspect(db.engine)
+        columns = [c['name'] for c in inspector.get_columns('expense')]
+        if 'date' not in columns:
+            db.session.execute(db.text("ALTER TABLE expense ADD COLUMN date TEXT"))
+        if 'notes' not in columns:
+            db.session.execute(db.text("ALTER TABLE expense ADD COLUMN notes TEXT"))
+        
+        # Budget table category migration (Option B)
+        budget_columns = [c['name'] for c in inspector.get_columns('budget')]
+        if 'category' not in budget_columns:
+            db.session.execute(db.text("ALTER TABLE budget ADD COLUMN category TEXT"))
+            
+        # User table threshold migration (Option B)
+        user_columns = [c['name'] for c in inspector.get_columns('user')]
+        if 'threshold' not in user_columns:
+            db.session.execute(db.text("ALTER TABLE user ADD COLUMN threshold INTEGER DEFAULT 80"))
+            
+        db.session.commit()
+    except Exception as e:
+        print("Auto-migration result:", e)
+        db.session.rollback()
+
+if __name__ == '__main__':
     app.run(debug=True)
