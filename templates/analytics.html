@@ -51,12 +51,6 @@
                             <span>Analytics</span>
                         </a>
                     </li>
-                    <li>
-                        <a href="/settings" onclick="showLoader()">
-                            <i data-lucide="settings"></i>
-                            <span>Settings</span>
-                        </a>
-                    </li>
                 </ul>
             </nav>
 
@@ -67,9 +61,13 @@
                 </button>
                 
                 <div class="sidebar-user">
-                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <a href="/settings" class="sidebar-avatar-link" onclick="showLoader()" title="Profile Settings">
+                        <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    </a>
                     <div class="user-info">
-                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/settings" class="sidebar-username-link" onclick="showLoader()" title="Profile Settings">
+                            <span class="username">{{ session['username'] }}</span>
+                        </a>
                         <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
                     </div>
                 </div>
