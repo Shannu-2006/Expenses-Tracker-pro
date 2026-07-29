@@ -735,6 +735,9 @@ function updateDOMStats(stats) {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+    
+    // Update AI Spending projections curve (Version 12)
+    updateAIForecast();
 }
 
 // AJAX - Adding Expense
@@ -747,6 +750,22 @@ function setupAjaxAddExpense() {
         showLoader();
         
         const formData = new FormData(addForm);
+        
+        // Handle offline submission caching (Version 12 PWA)
+        if (!navigator.onLine) {
+            const dataObj = {
+                name: formData.get("name"),
+                amount: parseInt(formData.get("amount")),
+                category: formData.get("category"),
+                date: formData.get("date") || new Date().toISOString().split('T')[0],
+                notes: formData.get("notes") || "Offline logged entry"
+            };
+            saveExpenseOffline(dataObj);
+            hideLoader();
+            addForm.reset();
+            closeTransactionDrawer();
+            return;
+        }
         
         fetch("/", {
             method: "POST",
@@ -1138,8 +1157,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hook OCR receipt scanner
     initReceiptScanner();
     
+    // Hook CSV Importer statement (Version 12)
+    initCSVImporter();
+    
     // Fetch initial stats dynamically
     fetchStatsOnLoad();
+    
+    // Trigger AI forecast predictions graph (Version 12)
+    updateAIForecast();
+    
+    // Sync offline queued transactions if online (Version 12)
+    syncOfflineExpenses();
     
     // Fetch notifications badge & list on load (Version 9)
     fetchNotifications();
@@ -1274,3 +1302,418 @@ function ajaxEmailStatement() {
             showToast("Network error emailing statement.");
         });
 }
+
+// --------------------------------------------------------------------------
+// PWA Service Worker Registration (Version 12)
+// --------------------------------------------------------------------------
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+            .then(reg => console.log('Service Worker registered successfully! Scope:', reg.scope))
+            .catch(err => console.error('Service Worker registration failed:', err));
+    });
+}
+
+// --------------------------------------------------------------------------
+// AI Spending Forecast & Trend line (Version 12)
+// --------------------------------------------------------------------------
+let forecastSparklineObj = null;
+
+function updateAIForecast() {
+    const projectedSpendEl = document.getElementById("forecastProjectedSpend");
+    const statusBoxEl = document.getElementById("forecastStatusBox");
+    const statusTextEl = document.getElementById("forecastStatusText");
+    const canvas = document.getElementById("forecastSparkline");
+    
+    if (!projectedSpendEl || !canvas) return;
+    
+    fetch("/api/ai/forecast")
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) return;
+            
+            projectedSpendEl.textContent = "₹" + data.projected_spend.toLocaleString("en-IN");
+            
+            let msg = "";
+            let statusClass = "healthy";
+            
+            if (data.budget_limit === 0) {
+                msg = "Please set a monthly budget limit to analyze warning thresholds.";
+            } else if (data.budget_status === "danger") {
+                statusClass = "danger";
+                msg = `⚠️ Projected to exceed budget! Expected limit breach around Day ${data.exceeded_on_day || 'N/A'} of this month.`;
+            } else if (data.budget_status === "warning") {
+                statusClass = "warning";
+                msg = `⚡ Projected to reach over 80% of your budget limit. Stay alert!`;
+            } else {
+                msg = `✅ On Track: Month-end spending is projected to stay safely within your limit.`;
+            }
+            
+            statusBoxEl.className = "forecast-status-box " + statusClass;
+            statusTextEl.textContent = msg;
+            
+            if (forecastSparklineObj) forecastSparklineObj.destroy();
+            
+            const labels = Array.from({length: data.days_in_month}, (_, i) => i + 1);
+            const actualData = Array(data.days_in_month).fill(null);
+            
+            data.actual_coords.forEach(pt => {
+                actualData[pt.x - 1] = pt.y;
+            });
+            
+            const projectedData = data.projected_coords.map(pt => pt.y);
+            
+            forecastSparklineObj = new Chart(canvas, {
+                type: "line",
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: "Actual Spend",
+                            data: actualData,
+                            borderColor: "#4f46e5",
+                            backgroundColor: "rgba(99, 102, 241, 0.05)",
+                            borderWidth: 2,
+                            pointRadius: 1,
+                            tension: 0.2,
+                            fill: false
+                        },
+                        {
+                            label: "AI Projected",
+                            data: projectedData,
+                            borderColor: "#94a3b8",
+                            borderWidth: 1.5,
+                            borderDash: [4, 4],
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: "index", intersect: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            });
+        })
+        .catch(err => {
+            console.error("AI Forecasting retrieval error:", err);
+        });
+}
+
+// --------------------------------------------------------------------------
+// CSV Statement Importer & Column Mapper (Version 12)
+// --------------------------------------------------------------------------
+let parsedCSVData = [];
+let csvHeaders = [];
+
+function openImportDrawer() {
+    const drawer = document.getElementById("importStatementDrawer");
+    if (drawer) drawer.classList.add("open");
+}
+
+function closeImportDrawer() {
+    const drawer = document.getElementById("importStatementDrawer");
+    if (drawer) {
+        drawer.classList.remove("open");
+        resetCSVImporter();
+    }
+}
+
+function resetCSVImporter() {
+    document.getElementById("csvFileInput").value = "";
+    document.getElementById("csvMapperContainer").style.display = "none";
+    document.getElementById("csvPreviewContainer").style.display = "none";
+    parsedCSVData = [];
+    csvHeaders = [];
+}
+
+function initCSVImporter() {
+    const dropzone = document.getElementById("csvDropzone");
+    const fileInput = document.getElementById("csvFileInput");
+    
+    if (!dropzone || !fileInput) return;
+    
+    dropzone.addEventListener("click", () => fileInput.click());
+    
+    ["dragenter", "dragover"].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add("dragover");
+        });
+    });
+    
+    ["dragleave", "drop"].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove("dragover");
+        });
+    });
+    
+    dropzone.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) handleCSVFile(files[0]);
+    });
+    
+    fileInput.addEventListener("change", () => {
+        if (fileInput.files.length > 0) handleCSVFile(fileInput.files[0]);
+    });
+}
+
+function handleCSVFile(file) {
+    if (!file.name.endsWith(".csv")) {
+        alert("Please upload a valid CSV file statement.");
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        parseRawCSV(text);
+    };
+    reader.readAsText(file);
+}
+
+function parseRawCSV(text) {
+    const lines = [];
+    let row = [""];
+    let inQuotes = false;
+    
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i+1];
+        
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                row[row.length - 1] += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            row.push('');
+        } else if ((char === '\r' || char === '\n') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') i++;
+            lines.push(row);
+            row = [""];
+        } else {
+            row[row.length - 1] += char;
+        }
+    }
+    if (row.length > 1 || row[0] !== "") {
+        lines.push(row);
+    }
+    
+    if (lines.length < 2) {
+        alert("The uploaded CSV file is empty or invalid.");
+        return;
+    }
+    
+    csvHeaders = lines[0].map(h => h.trim());
+    parsedCSVData = lines.slice(1).filter(l => l.length === csvHeaders.length);
+    
+    const dateSel = document.getElementById("csvDateCol");
+    const descSel = document.getElementById("csvDescCol");
+    const amtSel = document.getElementById("csvAmountCol");
+    
+    [dateSel, descSel, amtSel].forEach(sel => {
+        sel.innerHTML = "";
+        csvHeaders.forEach((h, idx) => {
+            const opt = document.createElement("option");
+            opt.value = idx;
+            opt.textContent = h || `Column ${idx + 1}`;
+            sel.appendChild(opt);
+        });
+    });
+    
+    csvHeaders.forEach((h, idx) => {
+        const headerLower = h.toLowerCase();
+        if (headerLower.includes("date")) dateSel.value = idx;
+        if (headerLower.includes("desc") || headerLower.includes("particular") || headerLower.includes("narration") || headerLower.includes("payee")) descSel.value = idx;
+        if (headerLower.includes("amount") || headerLower.includes("value") || headerLower.includes("withdrawal") || headerLower.includes("debit")) amtSel.value = idx;
+    });
+    
+    document.getElementById("csvMapperContainer").style.display = "block";
+    document.getElementById("csvPreviewContainer").style.display = "none";
+}
+
+function parseCSVWithMapping() {
+    const dateIdx = parseInt(document.getElementById("csvDateCol").value);
+    const descIdx = parseInt(document.getElementById("csvDescCol").value);
+    const amtIdx = parseInt(document.getElementById("csvAmountCol").value);
+    
+    const previewBody = document.getElementById("csvPreviewBody");
+    const previewContainer = document.getElementById("csvPreviewContainer");
+    const countEl = document.getElementById("csvRecordCount");
+    
+    if (!previewBody) return;
+    previewBody.innerHTML = "";
+    
+    let validCount = 0;
+    
+    parsedCSVData.forEach((row, rowIdx) => {
+        let rawDate = row[dateIdx] ? row[dateIdx].trim() : "";
+        let description = row[descIdx] ? row[descIdx].trim() : "Imported transaction";
+        let rawAmount = row[amtIdx] ? row[amtIdx].replace(/[^0-9.-]/g, "") : "";
+        
+        let amount = Math.abs(parseInt(rawAmount));
+        if (isNaN(amount) || amount === 0) return;
+        
+        let formattedDate = "";
+        if (rawDate) {
+            const parts = rawDate.split(/[\/\-]/);
+            if (parts.length === 3) {
+                if (parts[2].length === 4) {
+                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                } else if (parts[0].length === 4) {
+                    formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                }
+            }
+        }
+        if (!formattedDate) {
+            formattedDate = new Date().toISOString().split('T')[0];
+        }
+        
+        let category = "Other";
+        const descLower = description.toLowerCase();
+        if (descLower.includes("swiggy") || descLower.includes("zomato") || descLower.includes("restaurant") || descLower.includes("food") || descLower.includes("hotel") || descLower.includes("cafe")) {
+            category = "Food";
+        } else if (descLower.includes("uber") || descLower.includes("ola") || descLower.includes("irctc") || descLower.includes("metro") || descLower.includes("cab") || descLower.includes("flight") || descLower.includes("fuel")) {
+            category = "Travel";
+        } else if (descLower.includes("rent") || descLower.includes("landlord") || descLower.includes("pg")) {
+            category = "Rent";
+        } else if (descLower.includes("amazon") || descLower.includes("myntra") || descLower.includes("flipkart") || descLower.includes("groceries") || descLower.includes("blinkit") || descLower.includes("zepto")) {
+            category = "Shopping";
+        } else if (descLower.includes("netflix") || descLower.includes("spotify") || descLower.includes("cinema") || descLower.includes("movie") || descLower.includes("game") || descLower.includes("pub")) {
+            category = "Fun";
+        }
+        
+        validCount++;
+        
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><input type="checkbox" class="csv-row-checkbox" checked data-idx="${rowIdx}"></td>
+            <td><input type="date" value="${formattedDate}" class="csv-row-date" style="border:1px solid var(--border); border-radius:4px; font-size:0.75rem; padding:2px 4px;"></td>
+            <td><input type="text" value="${description}" class="csv-row-name" style="border:1px solid var(--border); border-radius:4px; font-size:0.75rem; padding:2px 4px; width:95%;"></td>
+            <td><strong>₹${amount}</strong><input type="hidden" value="${amount}" class="csv-row-amount"></td>
+            <td>
+                <select class="csv-row-category" style="border:1px solid var(--border); border-radius:4px; font-size:0.75rem; padding:2px 4px;">
+                    <option value="Food" ${category === 'Food' ? 'selected' : ''}>Food</option>
+                    <option value="Travel" ${category === 'Travel' ? 'selected' : ''}>Travel</option>
+                    <option value="Rent" ${category === 'Rent' ? 'selected' : ''}>Rent</option>
+                    <option value="Shopping" ${category === 'Shopping' ? 'selected' : ''}>Shopping</option>
+                    <option value="Fun" ${category === 'Fun' ? 'selected' : ''}>Fun</option>
+                    <option value="Other" ${category === 'Other' ? 'selected' : ''}>Other</option>
+                </select>
+            </td>
+        `;
+        previewBody.appendChild(tr);
+    });
+    
+    countEl.textContent = `${validCount} valid records found`;
+    previewContainer.style.display = "block";
+}
+
+function toggleSelectAllImportCSV(master) {
+    const checkboxes = document.querySelectorAll(".csv-row-checkbox");
+    checkboxes.forEach(cb => cb.checked = master.checked);
+}
+
+function saveImportedCSV() {
+    const rows = document.querySelectorAll("#csvPreviewBody tr");
+    const transactions = [];
+    
+    rows.forEach(tr => {
+        const checkbox = tr.querySelector(".csv-row-checkbox");
+        if (checkbox && checkbox.checked) {
+            const date = tr.querySelector(".csv-row-date").value;
+            const name = tr.querySelector(".csv-row-name").value;
+            const amount = parseInt(tr.querySelector(".csv-row-amount").value);
+            const category = tr.querySelector(".csv-row-category").value;
+            
+            transactions.push({ name, amount, category, date });
+        }
+    });
+    
+    if (transactions.length === 0) {
+        alert("Please select at least one transaction to import.");
+        return;
+    }
+    
+    showLoader();
+    fetch("/api/expenses/import", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ transactions })
+    })
+    .then(res => res.json())
+    .then(data => {
+        hideLoader();
+        if (data.success) {
+            showToast(data.message);
+            updateDOMStats(data.stats);
+            closeImportDrawer();
+        } else {
+            alert(data.message || "Failed to import statement.");
+        }
+    })
+    .catch(err => {
+        hideLoader();
+        console.error("CSV import saving error:", err);
+    });
+}
+
+// --------------------------------------------------------------------------
+// Offline Sync Queue (Version 12 PWA)
+// --------------------------------------------------------------------------
+function saveExpenseOffline(expenseData) {
+    let queue = JSON.parse(localStorage.getItem("offlineExpensesQueue") || "[]");
+    queue.push(expenseData);
+    localStorage.setItem("offlineExpensesQueue", JSON.stringify(queue));
+    showToast("💾 Saved offline! Transaction will be synced when internet returns.");
+}
+
+function syncOfflineExpenses() {
+    let queue = JSON.parse(localStorage.getItem("offlineExpensesQueue") || "[]");
+    if (queue.length === 0) return;
+    
+    console.log(`Syncing ${queue.length} offline transactions...`);
+    showLoader();
+    
+    fetch("/api/expenses/import", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ transactions: queue })
+    })
+    .then(res => res.json())
+    .then(data => {
+        hideLoader();
+        if (data.success) {
+            localStorage.setItem("offlineExpensesQueue", "[]");
+            showToast(`🔄 Synced ${queue.length} offline transactions!`);
+            updateDOMStats(data.stats);
+        }
+    })
+    .catch(err => {
+        hideLoader();
+        console.error("Offline synchronization error:", err);
+    });
+}
+
+window.addEventListener("online", syncOfflineExpenses);

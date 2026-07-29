@@ -1562,6 +1562,10 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
+
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.get_json() or {}
@@ -1812,6 +1816,162 @@ def api_budgets(current_user):
         db.session.delete(budget)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Budget deleted successfully!'})
+
+@app.route('/api/ai/forecast', methods=['GET'])
+def api_ai_forecast():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+    user_id = session['user_id']
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    
+    # Get budget
+    budget = Budget.query.filter_by(user_id=user_id, month=current_month, year=current_year, category='').first()
+    budget_limit = budget.amount if budget else 0
+    
+    # Get current month expenses
+    expenses = Expense.query.filter_by(user_id=user_id).all()
+    month_expenses = []
+    for e in expenses:
+        if e.date:
+            try:
+                dt = datetime.strptime(e.date, '%Y-%m-%d')
+                if dt.month == current_month and dt.year == current_year:
+                    month_expenses.append(e)
+            except ValueError:
+                pass
+                
+    # Group by day of month and calculate cumulative spending
+    today_day = datetime.now().day
+    import calendar
+    _, total_days = calendar.monthrange(current_year, current_month)
+    
+    daily_sums = {d: 0 for d in range(1, today_day + 1)}
+    for e in month_expenses:
+        try:
+            day = datetime.strptime(e.date, '%Y-%m-%d').day
+            if day in daily_sums:
+                daily_sums[day] += e.amount
+        except Exception:
+            pass
+            
+    # Cumulative Y points
+    cumulative_y = []
+    current_sum = 0
+    for d in range(1, today_day + 1):
+        current_sum += daily_sums[d]
+        cumulative_y.append(current_sum)
+        
+    x_points = list(range(1, today_day + 1))
+    
+    # Standard Linear Regression using OLS
+    N = len(x_points)
+    if N <= 1 or sum(cumulative_y) == 0:
+        projected_spend = int((current_sum / today_day) * total_days) if today_day > 0 else 0
+        slope = 0
+        intercept = current_sum
+    else:
+        sum_x = sum(x_points)
+        sum_y = sum(cumulative_y)
+        sum_xx = sum(x**2 for x in x_points)
+        sum_xy = sum(x*y for x, y in zip(x_points, cumulative_y))
+        
+        denom = (N * sum_xx) - (sum_x ** 2)
+        if denom == 0:
+            slope = 0
+            intercept = current_sum
+        else:
+            slope = ((N * sum_xy) - (sum_x * sum_y)) / denom
+            intercept = (sum_y - (slope * sum_x)) / N
+            
+        projected_spend = max(0, int(slope * total_days + intercept))
+        
+    status = 'healthy'
+    exceeded_on_day = None
+    
+    if budget_limit > 0:
+        pct = (projected_spend / budget_limit) * 100
+        if projected_spend >= budget_limit:
+            status = 'danger'
+            if slope > 0:
+                exceeded_day = int((budget_limit - intercept) / slope)
+                if 1 <= exceeded_day <= total_days:
+                    exceeded_on_day = exceeded_day
+        elif pct >= 80:
+            status = 'warning'
+            
+    actual_coords = [{'x': x, 'y': y} for x, y in zip(x_points, cumulative_y)]
+    
+    projected_coords = []
+    for d in range(1, total_days + 1):
+        if N <= 1 or sum(cumulative_y) == 0:
+            y_val = int((current_sum / today_day) * d) if today_day > 0 else 0
+        else:
+            y_val = max(0, int(slope * d + intercept))
+        projected_coords.append({'x': d, 'y': y_val})
+        
+    return jsonify({
+        'success': True,
+        'budget_limit': budget_limit,
+        'current_spend': current_sum,
+        'projected_spend': projected_spend,
+        'budget_status': status,
+        'exceeded_on_day': exceeded_on_day,
+        'actual_coords': actual_coords,
+        'projected_coords': projected_coords,
+        'days_in_month': total_days
+    })
+
+@app.route('/api/expenses/import', methods=['POST'])
+def api_expenses_import():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        
+    data = request.get_json() or {}
+    transactions = data.get('transactions', [])
+    
+    if not transactions:
+        return jsonify({'success': False, 'message': 'No transactions provided'}), 400
+        
+    imported_count = 0
+    for tx in transactions:
+        name = tx.get('name')
+        amount = tx.get('amount')
+        category = tx.get('category', 'Other')
+        date = tx.get('date')
+        notes = tx.get('notes', 'Imported Statement')
+        
+        if not name or amount is None:
+            continue
+            
+        if not date:
+            date = datetime.now().strftime('%Y-%m-%d')
+            
+        expense = Expense(
+            name=name,
+            amount=int(amount),
+            category=category,
+            date=date,
+            notes=notes,
+            user_id=session['user_id']
+        )
+        db.session.add(expense)
+        imported_count += 1
+        
+    db.session.commit()
+    
+    try:
+        stats = get_user_stats(session['user_id'])
+        check_budget_thresholds(session['user_id'], stats['total'], stats['budget_amount'])
+    except Exception as e_thresh:
+        print("Import threshold checking error:", e_thresh)
+        
+    return jsonify({
+        'success': True,
+        'message': f'Successfully imported {imported_count} transactions!',
+        'stats': get_user_stats(session['user_id'])
+    })
 
 # Run database tables self-healing migrations at startup module load
 with app.app_context():

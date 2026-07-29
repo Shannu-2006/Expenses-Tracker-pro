@@ -2359,3 +2359,72 @@ body {
     border-top: 1px solid var(--border);
     margin: 1rem 0;
 }
+
+/* Drag and Drop CSV Importer styles */
+.receipt-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--background);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+}
+.receipt-dropzone:hover,
+.receipt-dropzone.dragover {
+    border-color: var(--primary);
+    background-color: var(--primary-light);
+}
+.receipt-dropzone .dropzone-icon {
+    width: 38px;
+    height: 38px;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+.receipt-dropzone .dropzone-icon i {
+    width: 20px;
+    height: 20px;
+}
+.receipt-dropzone:hover .dropzone-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+.receipt-dropzone p {
+    font-size: 0.85rem;
+    color: var(--text);
+    margin: 0;
+}
+
+/* AI Forecast styling box categories */
+.forecast-status-box.healthy {
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #34d399;
+}
+.forecast-status-box.warning {
+    background-color: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+}
+.forecast-status-box.danger {
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #f87171;
+}
+.forecast-status-box p {
+    margin: 0;
+    font-weight: 500;
+}
+.forecast-metric {
+    padding: 0.25rem 0;
+}
