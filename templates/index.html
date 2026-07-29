@@ -1,367 +1,521 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-
-    <title>Expense Tracker Pro</title>
-
-    <link rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}">
-
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker Pro — Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
-
-<body>
-
-    <button
-        class="dark-mode-btn"
-        onclick="toggleDarkMode()">
-
-        🌙 Dark Mode
-
-    </button>
-
-    <div class="container">
-
-        <h1>💰 Expense Tracker Pro</h1>
-
-        <div style="text-align:right; margin-bottom:20px;">
-
-    <a href="/logout">
-
-        <button type="button">
-            Logout
-        </button>
-
-    </a>
-
-</div>
-
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        <div class="success-message">
-            {{ messages[0] }}
+<body class="app-shell">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p>Syncing your financial ledger...</p>
         </div>
-        {% endif %}
-        {% endwith %}
+    </div>
 
-        <div class="dashboard">
-
-            <div class="card total-card">
-                <h3>Total Expenses</h3>
-                <p>₹{{ total }}</p>
+    <!-- Application Shell Container -->
+    <div class="app-layout">
+        
+        <!-- Collapsible Left Sidebar Navigation Drawer -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-brand">
+                <span class="brand-logo"><i data-lucide="gem"></i></span>
+                <span class="brand-text">ExpenseTracker <span class="badge-pro">PRO</span></span>
             </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li class="active">
+                        <a href="/">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/reports" onclick="showLoader()">
+                            <i data-lucide="file-spreadsheet"></i>
+                            <span>Reports</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/analytics" onclick="showLoader()">
+                            <i data-lucide="trending-up"></i>
+                            <span>Analytics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
 
-            <div class="card transaction-card">
-                <h3>Transactions</h3>
-                <p>{{ transaction_count }}</p>
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn-sidebar" onclick="toggleDarkMode()" aria-label="Toggle dark mode">
+                    <i data-lucide="moon" class="theme-icon-svg"></i>
+                    <span class="theme-text">Dark Mode</span>
+                </button>
+                
+                <div class="sidebar-user">
+                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <div class="user-info">
+                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
+                    </div>
+                </div>
             </div>
+        </aside>
 
-            <div class="card highest-card">
-                <h3>Highest Expense</h3>
-                <p>₹{{ highest_expense }}</p>
-            </div>
+        <!-- Right Workspace Panel -->
+        <div class="main-workspace">
+            
+            <!-- Top Header Toolbar strip -->
+            <header class="workspace-header">
+                <div class="header-left">
+                    <button class="sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation Sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-titles">
+                        <h1>Financial Dashboard</h1>
+                        <p id="currentDate" class="text-muted"></p>
+                    </div>
+                </div>
+                
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openTransactionDrawer()">
+                        <i data-lucide="plus-circle"></i> Add Transaction
+                    </button>
+                </div>
+            </header>
 
-            <div class="card average-card">
-                <h3>Average Expense</h3>
-                <p>₹{{ average_expense }}</p>
-            </div>
-
-        </div>
-
-        <!-- ANALYTICS SECTION -->
-
-        <div class="analytics-card">
-
-            <h2>📊 Expense Analytics</h2>
-
-            <div class="analytics-grid">
-
-               <div class="chart-box">
-
-    <h3>Expense Distribution</h3>
-
-    <canvas id="expenseChart"></canvas>
-
-</div>
-
-<div class="chart-box">
-
-    <h3>Category Spending</h3>
-
-    <canvas id="barChart"></canvas>
-
-</div>
-
-                <div class="summary-box">
-
-                    <h3>Category Totals</h3>
-
-                    <ul class="summary-list">
-
-                        <li>
-                            🍔 Food :
-                            ₹{{ category_totals['Food'] }}
-                        </li>
-
-                        <li>
-                            🚗 Travel :
-                            ₹{{ category_totals['Travel'] }}
-                        </li>
-
-                        <li>
-                            🏠 Rent :
-                            ₹{{ category_totals['Rent'] }}
-                        </li>
-
-                        <li>
-                            🛒 Shopping :
-                            ₹{{ category_totals['Shopping'] }}
-                        </li>
-
-                        <li>
-                            🎉 Fun :
-                            ₹{{ category_totals['Fun'] }}
-                        </li>
-
-                        <li>
-                            📦 Other :
-                            ₹{{ category_totals['Other'] }}
-                        </li>
-
-                    </ul>
-
+            <!-- Scrollable Workspace content -->
+            <div class="workspace-content">
+                <!-- Toast alert container (dynamic insertion target) -->
+                <div id="toastContainer" class="toast-container-anchor">
+                    {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                    <div class="alert alert-success toast" id="toastMessage">
+                        <span class="alert-icon"><i data-lucide="sparkles"></i></span>
+                        <span class="alert-text">{{ messages[0] }}</span>
+                        <button class="alert-close" onclick="document.getElementById('toastMessage').remove()">×</button>
+                    </div>
+                    {% endif %}
+                    {% endwith %}
                 </div>
 
+                <!-- Welcome status banner -->
+                <section class="welcome-card animate-fade-in">
+                    <div class="welcome-info">
+                        <p class="welcome-date">EXPENDITURES REVIEW</p>
+                        <h2 class="welcome-title-h2">Summary Statement for <span id="monthNameText">{{ month_name }}</span> {{ current_year }}</h2>
+                        <p class="welcome-lead">Monitor thresholds, evaluate insights, and keep track of your cash flows.</p>
+                    </div>
+                    <div class="welcome-summary">
+                        <div class="summary-pill">
+                            <span class="pill-label">Status</span>
+                            <span class="pill-value status-{{ budget_status }}" id="budgetStateText">{{ budget_state }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KPI statistics grid -->
+                <section class="kpi-grid">
+                    <div class="kpi-card spent animate-slide-up" style="--delay: 1;">
+                        <div class="kpi-icon"><i data-lucide="credit-card"></i></div>
+                        <div class="kpi-details">
+                            <h3>Total Expenses</h3>
+                            <p class="kpi-value" id="kpiTotal">₹{{ total }}</p>
+                            <span class="kpi-subtext">all time</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card budget animate-slide-up" style="--delay: 2;">
+                        <div class="kpi-icon"><i data-lucide="compass"></i></div>
+                        <div class="kpi-details">
+                            <h3>Monthly Budget</h3>
+                            <p class="kpi-value" id="kpiBudget">₹{{ budget_amount }}</p>
+                            <span class="kpi-subtext">current limit</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card remaining animate-slide-up" style="--delay: 3;">
+                        <div class="kpi-icon"><i data-lucide="wallet"></i></div>
+                        <div class="kpi-details">
+                            <h3>Remaining Budget</h3>
+                            <p class="kpi-value status-color-{{ budget_status }}" id="kpiRemaining">₹{{ remaining_budget }}</p>
+                            <span class="kpi-subtext">safe limit margin</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card average animate-slide-up" style="--delay: 4;">
+                        <div class="kpi-icon"><i data-lucide="bar-chart-2"></i></div>
+                        <div class="kpi-details">
+                            <h3>Avg / Transactions</h3>
+                            <p class="kpi-value" id="kpiAverage">₹{{ average_expense }} <span class="kpi-subtext">({{ transaction_count }} tx)</span></p>
+                            <span class="kpi-subtext">mean value</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Split Content Layout -->
+                <div class="dashboard-split">
+                    <!-- Left column main panel -->
+                    <main class="dashboard-main">
+                        <!-- Budget Target card -->
+                        <div class="panel-card budget-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="target" class="header-icon-inline"></i> Budget Target Progress</h2>
+                                <div class="budget-actions-menu" id="budgetDeleteAction">
+                                    {% if budget_amount > 0 %}
+                                    <button onclick="ajaxDeleteBudget()" class="btn-danger-link btn-xs border-none bg-none cursor-pointer">Delete Budget</button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="panel-body">
+                                <div class="progress-container">
+                                    <div class="progress-bar-wrapper">
+                                        <div class="progress-bar-bg">
+                                            <div id="progressBarFill" class="progress-bar-fill {{ budget_status }}" data-progress="{{ budget_percentage }}"></div>
+                                        </div>
+                                        <span id="progressBarPercentage" class="progress-percent-badge status-bg-{{ budget_status }}">
+                                            {{ "%.1f"|format(actual_budget_percentage) }}%
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="budget-status-message" id="budgetStatusMsgContainer">
+                                    {% if budget_status == "healthy" %}
+                                    <p class="status-msg status-msg-healthy">
+                                        <span class="msg-icon"><i data-lucide="check-circle-2"></i></span> Budget Healthy: Keep staying under control!
+                                    </p>
+                                    {% elif budget_status == "warning" %}
+                                    <p class="status-msg status-msg-warning">
+                                        <span class="msg-icon"><i data-lucide="alert-triangle"></i></span> Warning: You're approaching your monthly budget limit!
+                                    </p>
+                                    {% elif budget_status == "danger" %}
+                                    <p class="status-msg status-msg-danger">
+                                        <span class="msg-icon"><i data-lucide="skull"></i></span> Danger: Budget Exceeded! Limit your spendings immediately.
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Graphical insights row -->
+                        <div class="panel-card analytics-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="pie-chart" class="header-icon-inline"></i> Expense Insights</h2>
+                            </div>
+                            <div class="panel-body">
+                                <div class="analytics-grid">
+                                    <div class="chart-box">
+                                        <h3>Expense Distribution</h3>
+                                        <div class="canvas-container">
+                                            <canvas id="expenseChart"></canvas>
+                                        </div>
+                                    </div>
+                                    <div class="chart-box">
+                                        <h3>Category Spending</h3>
+                                        <div class="canvas-container">
+                                            <canvas id="barChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Category breakdown counters -->
+                                <div class="category-breakdown-list">
+                                    <h3>Category Totals</h3>
+                                    <div class="category-grid" id="categoryGridList">
+                                        <div class="category-card food">
+                                            <span class="category-icon"><i data-lucide="chef-hat"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Food</span>
+                                                <span class="category-amount" id="catTotalFood">₹{{ category_totals['Food'] }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="category-card travel">
+                                            <span class="category-icon"><i data-lucide="car"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Travel</span>
+                                                <span class="category-amount" id="catTotalTravel">₹{{ category_totals['Travel'] }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="category-card rent">
+                                            <span class="category-icon"><i data-lucide="home"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Rent</span>
+                                                <span class="category-amount" id="catTotalRent">₹{{ category_totals['Rent'] }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="category-card shopping">
+                                            <span class="category-icon"><i data-lucide="shopping-bag"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Shopping</span>
+                                                <span class="category-amount" id="catTotalShopping">₹{{ category_totals['Shopping'] }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="category-card fun">
+                                            <span class="category-icon"><i data-lucide="party-popper"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Fun</span>
+                                                <span class="category-amount" id="catTotalFun">₹{{ category_totals['Fun'] }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="category-card other">
+                                            <span class="category-icon"><i data-lucide="layers"></i></span>
+                                            <div class="category-info">
+                                                <span class="category-name">Other</span>
+                                                <span class="category-amount" id="catTotalOther">₹{{ category_totals['Other'] }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    <!-- Right column widget sidebar -->
+                    <aside class="dashboard-sidebar">
+                        <!-- Budget set panel -->
+                        <div class="panel-card form-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="sliders" class="header-icon-inline"></i> Budget Settings</h2>
+                            </div>
+                            <div class="panel-body">
+                                <form id="budgetSettingForm" class="styled-form inline-budget-form">
+                                    <div class="input-group">
+                                        <label for="budget">Set Monthly Budget (₹)</label>
+                                        <div class="input-wrapper-btn">
+                                            <input type="number" id="budget" name="budget" placeholder="Enter Monthly Budget" value="{{ budget_amount }}" required>
+                                            <button type="submit" class="btn btn-primary">Save</button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="budgetResetAction" style="margin-top: 1rem; {% if budget_amount == 0 %}display: none;{% endif %}">
+                                    <button onclick="ajaxResetBudget()" class="btn btn-outline btn-block">Reset Budget to ₹0</button>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+
+                <!-- Ledger History Table panel -->
+                <section class="panel-card history-panel animate-fade-in">
+                    <div class="panel-header table-header">
+                        <h2><i data-lucide="history" class="header-icon-inline"></i> Expense Ledger</h2>
+                        <div class="filters-container">
+                            <div class="search-wrapper">
+                                <span class="search-icon"><i data-lucide="search"></i></span>
+                                <input type="text" id="searchInput" placeholder="Search by name..." onkeyup="searchExpenses()">
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="categoryFilter" onchange="searchExpenses()">
+                                    <option value="all">All Categories</option>
+                                    <option value="food">Food</option>
+                                    <option value="travel">Travel</option>
+                                    <option value="rent">Rent</option>
+                                    <option value="shopping">Shopping</option>
+                                    <option value="fun">Fun</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Ledger details scope filter row -->
+                    <div class="advanced-filters-bar">
+                        <div class="filter-item">
+                            <label for="dateStartFilter">Start Date</label>
+                            <input type="date" id="dateStartFilter" onchange="searchExpenses()">
+                        </div>
+                        <div class="filter-item">
+                            <label for="dateEndFilter">End Date</label>
+                            <input type="date" id="dateEndFilter" onchange="searchExpenses()">
+                        </div>
+                        <div class="filter-item">
+                            <label for="amountMinFilter">Min Amount (₹)</label>
+                            <input type="number" id="amountMinFilter" placeholder="0" onkeyup="searchExpenses()" onchange="searchExpenses()">
+                        </div>
+                        <div class="filter-item">
+                            <label for="amountMaxFilter">Max Amount (₹)</label>
+                            <input type="number" id="amountMaxFilter" placeholder="Max" onkeyup="searchExpenses()" onchange="searchExpenses()">
+                        </div>
+                        <button type="button" class="btn btn-xs btn-outline reset-filters-btn" onclick="clearFilters()">Reset Filters</button>
+                    </div>
+
+                    <div class="panel-body">
+                        <div class="table-wrapper">
+                            <table class="modern-table" id="expenseHistoryTable">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Name</th>
+                                        <th>Category</th>
+                                        <th>Amount</th>
+                                        <th>Notes</th>
+                                        <th class="text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableBody">
+                                    {% for expense in expenses %}
+                                    <tr class="expense-row" id="row-{{ expense.id }}"
+                                        data-name="{{ expense.name }}" 
+                                        data-category="{{ expense.category }}"
+                                        data-date="{{ expense.date or '' }}"
+                                        data-amount="{{ expense.amount }}">
+                                        <td class="td-date">{{ expense.date or '-' }}</td>
+                                        <td class="td-name"><strong>{{ expense.name }}</strong></td>
+                                        <td>
+                                            <span class="badge badge-category badge-{{ expense.category.lower() }}">
+                                                {{ expense.category }}
+                                            </span>
+                                        </td>
+                                        <td class="td-amount">₹{{ expense.amount }}</td>
+                                        <td class="td-notes">
+                                            {% if expense.notes %}
+                                            <span class="notes-preview" title="{{ expense.notes }}">
+                                                📝 <span class="notes-truncated">{{ expense.notes }}</span>
+                                            </span>
+                                            {% else %}
+                                            <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-right">
+                                            <div class="row-actions">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="openEditModal('{{ expense.id }}', '{{ expense.name }}', '{{ expense.amount }}', '{{ expense.category }}', '{{ expense.date }}', '{{ expense.notes or "" }}')">
+                                                    <i data-lucide="edit-3"></i> Edit
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="ajaxDeleteExpense('{{ expense.id }}')">
+                                                    <i data-lucide="trash-2"></i> Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr class="no-records-row" id="noRecordsPlaceholder">
+                                        <td colspan="6" class="text-center">No expenses recorded yet. Click Add Transaction to start tracking!</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Client pagination control bar -->
+                        <div class="pagination-bar" id="paginationBar" style="display: none;">
+                            <button type="button" class="btn btn-sm btn-outline" id="prevPageBtn" onclick="changePage(-1)">&larr; Previous</button>
+                            <span class="pagination-info" id="paginationInfo">Page 1 of 1</span>
+                            <button type="button" class="btn btn-sm btn-outline" id="nextPageBtn" onclick="changePage(1)">Next &rarr;</button>
+                        </div>
+                    </div>
+                </section>
             </div>
-
         </div>
-
-        <!-- ADD EXPENSE -->
-
-        <div class="form-card">
-
-            <h2>Add Expense</h2>
-
-            <form method="POST">
-
-                <input
-                    type="text"
-                    name="name"
-                    placeholder="Expense Name"
-                    required>
-
-                <input
-                    type="number"
-                    name="amount"
-                    placeholder="Amount"
-                    required>
-
-                <select
-                    name="category"
-                    required>
-
-                    <option value="">Select Category</option>
-                    <option value="Food">Food</option>
-                    <option value="Travel">Travel</option>
-                    <option value="Rent">Rent</option>
-                    <option value="Shopping">Shopping</option>
-                    <option value="Fun">Fun</option>
-                    <option value="Other">Other</option>
-
-                </select>
-
-                <button type="submit">
-                    Add Expense
-                </button>
-
-            </form>
-
-        </div>
-
-        <!-- HISTORY -->
-
-        <div class="table-card">
-
-            <h2>Expense History</h2>
-
-            <div class="search-section">
-
-                <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="🔍 Search Expense..."
-                    onkeyup="searchExpenses()">
-
-                <select
-                    id="categoryFilter"
-                    onchange="searchExpenses()">
-
-                    <option value="all">All Categories</option>
-                    <option value="food">Food</option>
-                    <option value="travel">Travel</option>
-                    <option value="rent">Rent</option>
-                    <option value="shopping">Shopping</option>
-                    <option value="fun">Fun</option>
-                    <option value="other">Other</option>
-
-                </select>
-
-            </div>
-
-            <table>
-
-                <tr>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Amount</th>
-                    <th>Actions</th>
-                </tr>
-
-                {% for expense in expenses %}
-
-                <tr
-                    class="expense-row"
-                    data-name="{{ expense.name }}"
-                    data-category="{{ expense.category }}">
-
-                    <td>{{ expense.name }}</td>
-
-                    <td>
-                        <span class="badge {{ expense.category.lower() }}">
-                            {{ expense.category }}
-                        </span>
-                    </td>
-
-                    <td>₹{{ expense.amount }}</td>
-
-                    <td>
-
-                        <button
-                            type="button"
-                            class="edit-btn"
-                            onclick="openEditModal(
-                            '{{ expense.id }}',
-                            '{{ expense.name }}',
-                            '{{ expense.amount }}',
-                            '{{ expense.category }}'
-                            )">
-
-                            Edit
-
-                        </button>
-
-                        <a
-                            href="/delete/{{ expense.id }}"
-                            onclick="return confirmDelete()">
-
-                            <button
-                                type="button"
-                                class="delete-btn">
-
-                                Delete
-
-                            </button>
-
-                        </a>
-
-                    </td>
-
-                </tr>
-
-                {% endfor %}
-
-            </table>
-
-        </div>
-
     </div>
 
-    <!-- EDIT MODAL -->
-
-    <div
-        id="editModal"
-        class="modal">
-
-        <div class="modal-content">
-
-            <span
-                class="close-btn"
-                onclick="closeEditModal()">
-
-                &times;
-
-            </span>
-
-            <h2>Edit Expense</h2>
-
-            <form
-                id="editForm"
-                method="POST">
-
-                <input
-                    type="text"
-                    id="editName"
-                    name="name"
-                    required>
-
-                <input
-                    type="number"
-                    id="editAmount"
-                    name="amount"
-                    required>
-
-                <select
-                    id="editCategory"
-                    name="category"
-                    required>
-
-                    <option value="Food">Food</option>
-                    <option value="Travel">Travel</option>
-                    <option value="Rent">Rent</option>
-                    <option value="Shopping">Shopping</option>
-                    <option value="Fun">Fun</option>
-                    <option value="Other">Other</option>
-
-                </select>
-
-                <button type="submit">
-                    Save Changes
-                </button>
-
+    <!-- Slide-out Transaction Drawer Panel overlay -->
+    <div id="transactionDrawer" class="drawer">
+        <div class="drawer-overlay" onclick="closeTransactionDrawer()"></div>
+        <div class="drawer-content">
+            <div class="drawer-header">
+                <h2><i data-lucide="plus-circle"></i> Add Transaction</h2>
+                <button class="drawer-close" onclick="closeTransactionDrawer()"><i data-lucide="x"></i></button>
+            </div>
+            
+            <form id="ajaxAddExpenseForm" class="drawer-form">
+                <div class="form-group">
+                    <label for="expenseName">Expense Item Name</label>
+                    <input type="text" id="expenseName" name="name" placeholder="e.g. Cafe Latte" required>
+                </div>
+                <div class="form-group">
+                    <label for="expenseAmount">Amount (₹)</label>
+                    <input type="number" id="expenseAmount" name="amount" placeholder="e.g. 240" required>
+                </div>
+                <div class="form-group">
+                    <label for="expenseCategory">Category</label>
+                    <div class="select-wrapper">
+                        <select id="expenseCategory" name="category" required>
+                            <option value="" disabled selected>Select category</option>
+                            <option value="Food">Food</option>
+                            <option value="Travel">Travel</option>
+                            <option value="Rent">Rent</option>
+                            <option value="Shopping">Shopping</option>
+                            <option value="Fun">Fun</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="expenseDate">Transaction Date</label>
+                    <input type="date" id="expenseDate" name="date" required>
+                </div>
+                <div class="form-group">
+                    <label for="expenseNotes">Optional Notes</label>
+                    <textarea id="expenseNotes" name="notes" placeholder="e.g. Bought with friends at cafe..." rows="3"></textarea>
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-block">Save Transaction</button>
             </form>
-
         </div>
-
     </div>
 
-    <!-- CHART DATA -->
+    <!-- Edit Modal box -->
+    <div id="editModal" class="modal">
+        <div class="modal-content animate-scale-up">
+            <div class="modal-header">
+                <h2><i data-lucide="edit-3"></i> Edit Expense</h2>
+                <span class="close-btn" onclick="closeEditModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="ajaxEditForm" class="styled-form">
+                    <div class="input-group">
+                        <label for="editName">Expense Name</label>
+                        <input type="text" id="editName" name="name" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="editAmount">Amount (₹)</label>
+                        <input type="number" id="editAmount" name="amount" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="editCategory">Category</label>
+                        <div class="select-wrapper">
+                            <select id="editCategory" name="category" required>
+                                <option value="Food">Food</option>
+                                <option value="Travel">Travel</option>
+                                <option value="Rent">Rent</option>
+                                <option value="Shopping">Shopping</option>
+                                <option value="Fun">Fun</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="editDate">Date</label>
+                        <input type="date" id="editDate" name="date" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="editNotes">Notes</label>
+                        <textarea id="editNotes" name="notes" placeholder="Additional details (optional)" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
 
- <script>
-
-const chartLabels = [
-    "Food",
-    "Travel",
-    "Rent",
-    "Shopping",
-    "Fun",
-    "Other"
-];
-
-const chartValues = [
-    "{{ category_totals['Food'] }}",
-    "{{ category_totals['Travel'] }}",
-    "{{ category_totals['Rent'] }}",
-    "{{ category_totals['Shopping'] }}",
-    "{{ category_totals['Fun'] }}",
-    "{{ category_totals['Other'] }}"
-];
-
-</script>
-
+    <!-- Chart Config dynamic variables -->
+    <script>
+        let chartLabels = ["Food", "Travel", "Rent", "Shopping", "Fun", "Other"];
+        let chartValues = [
+            "{{ category_totals['Food'] }}",
+            "{{ category_totals['Travel'] }}",
+            "{{ category_totals['Rent'] }}",
+            "{{ category_totals['Shopping'] }}",
+            "{{ category_totals['Fun'] }}",
+            "{{ category_totals['Other'] }}"
+        ];
+    </script>
 </body>
-
 </html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker Pro — Reports</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body class="app-shell">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p>Gathering ledger data...</p>
+        </div>
+    </div>
+
+    <!-- Application Shell Container -->
+    <div class="app-layout">
+        
+        <!-- Collapsible Left Sidebar Navigation Drawer -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-brand">
+                <span class="brand-logo"><i data-lucide="gem"></i></span>
+                <span class="brand-text">ExpenseTracker <span class="badge-pro">PRO</span></span>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li>
+                        <a href="/" onclick="showLoader()">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="active">
+                        <a href="/reports">
+                            <i data-lucide="file-spreadsheet"></i>
+                            <span>Reports</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/analytics" onclick="showLoader()">
+                            <i data-lucide="trending-up"></i>
+                            <span>Analytics</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle-btn-sidebar" onclick="toggleDarkMode()" aria-label="Toggle dark mode">
+                    <i data-lucide="moon" class="theme-icon-svg"></i>
+                    <span class="theme-text">Dark Mode</span>
+                </button>
+                
+                <div class="sidebar-user">
+                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <div class="user-info">
+                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Workspace Panel -->
+        <div class="main-workspace">
+            
+            <!-- Top Header Toolbar strip -->
+            <header class="workspace-header">
+                <div class="header-left">
+                    <button class="sidebar-toggle-btn" onclick="toggleSidebar()" aria-label="Toggle Navigation Sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-titles">
+                        <h1>Financial Ledger Reports</h1>
+                        <p class="text-muted">Generate and export statements</p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Scrollable Workspace content -->
+            <div class="workspace-content">
+                
+                <!-- Reports Header Banner -->
+                <header class="welcome-card animate-fade-in">
+                    <div class="welcome-info">
+                        <p class="welcome-date">EXPORTS & STATEMENTS</p>
+                        <h2 class="welcome-title-h2">Financial Ledger Statements</h2>
+                        <p class="welcome-lead">Apply filters below to compile customized ledgers and export them to professional CSV, Excel, or PDF sheets.</p>
+                    </div>
+                    <div class="welcome-summary">
+                        <div class="summary-pill">
+                            <span class="pill-label">Total Compiled</span>
+                            <span class="pill-value">₹{{ total }}</span>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Reports Filter Controller -->
+                <section class="panel-card reports-filter-panel animate-fade-in">
+                    <div class="panel-header">
+                        <h2><i data-lucide="sliders" class="header-icon-inline"></i> Compile Report Filters</h2>
+                    </div>
+                    <div class="panel-body">
+                        <form action="/reports" method="GET" class="advanced-filters-bar reports-filter-form" onsubmit="showLoader()">
+                            <div class="filter-item">
+                                <label for="start_date">Start Date</label>
+                                <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+                            </div>
+                            <div class="filter-item">
+                                <label for="end_date">End Date</label>
+                                <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+                            </div>
+                            <div class="filter-item">
+                                <label for="category">Category</label>
+                                <div class="select-wrapper">
+                                    <select id="category" name="category">
+                                        <option value="all" {% if category == 'all' %}selected{% endif %}>All Categories</option>
+                                        <option value="Food" {% if category == 'Food' %}selected{% endif %}>Food</option>
+                                        <option value="Travel" {% if category == 'Travel' %}selected{% endif %}>Travel</option>
+                                        <option value="Rent" {% if category == 'Rent' %}selected{% endif %}>Rent</option>
+                                        <option value="Shopping" {% if category == 'Shopping' %}selected{% endif %}>Shopping</option>
+                                        <option value="Fun" {% if category == 'Fun' %}selected{% endif %}>Fun</option>
+                                        <option value="Other" {% if category == 'Other' %}selected{% endif %}>Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="reports-filter-buttons">
+                                <button type="submit" class="btn btn-primary">Generate Report</button>
+                                <a href="/reports" class="btn btn-outline" onclick="showLoader()">Clear Filters</a>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- Compiled Statistics Cards -->
+                <section class="kpi-grid">
+                    <div class="kpi-card spent animate-slide-up" style="--delay: 1;">
+                        <div class="kpi-icon"><i data-lucide="credit-card"></i></div>
+                        <div class="kpi-details">
+                            <h3>Filtered Total</h3>
+                            <p class="kpi-value">₹{{ total }}</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card budget animate-slide-up" style="--delay: 2;">
+                        <div class="kpi-icon"><i data-lucide="bar-chart-2"></i></div>
+                        <div class="kpi-details">
+                            <h3>Average Expense</h3>
+                            <p class="kpi-value">₹{{ average_expense }}</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card remaining animate-slide-up" style="--delay: 3;">
+                        <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+                        <div class="kpi-details">
+                            <h3>Highest Transaction</h3>
+                            <p class="kpi-value">₹{{ highest_expense }}</p>
+                        </div>
+                    </div>
+                    <div class="kpi-card average animate-slide-up" style="--delay: 4;">
+                        <div class="kpi-icon"><i data-lucide="list"></i></div>
+                        <div class="kpi-details">
+                            <h3>Records Count</h3>
+                            <p class="kpi-value">{{ count }} <span class="kpi-subtext">items</span></p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Preview Split Grid -->
+                <div class="dashboard-split">
+                    <!-- Left Side: Table Preview -->
+                    <main class="dashboard-main">
+                        <section class="panel-card history-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="file-text" class="header-icon-inline"></i> Compiled Ledger Preview</h2>
+                            </div>
+                            <div class="panel-body">
+                                <div class="table-wrapper">
+                                    <table class="modern-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Expense Name</th>
+                                                <th>Category</th>
+                                                <th>Amount</th>
+                                                <th>Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for expense in expenses %}
+                                            <tr class="expense-row" 
+                                                data-name="{{ expense.name }}" 
+                                                data-category="{{ expense.category }}"
+                                                data-date="{{ expense.date or '' }}"
+                                                data-amount="{{ expense.amount }}">
+                                                <td class="td-date">{{ expense.date or '-' }}</td>
+                                                <td class="td-name"><strong>{{ expense.name }}</strong></td>
+                                                <td>
+                                                    <span class="badge badge-category badge-{{ expense.category.lower() }}">
+                                                        {{ expense.category }}
+                                                    </span>
+                                                </td>
+                                                <td class="td-amount">₹{{ expense.amount }}</td>
+                                                <td class="td-notes">
+                                                    {% if expense.notes %}
+                                                    <span class="notes-preview" title="{{ expense.notes }}">
+                                                        📝 <span class="notes-truncated">{{ expense.notes }}</span>
+                                                    </span>
+                                                    {% else %}
+                                                    <span class="text-muted">-</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% else %}
+                                            <tr class="no-records-row">
+                                                <td colspan="5" class="text-center">No expenses match the selected filters.</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+                    </main>
+
+                    <!-- Right Side: Export Action Panel & Summary list -->
+                    <aside class="dashboard-sidebar">
+                        <!-- Export Controller panel -->
+                        <div class="panel-card form-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="download" class="header-icon-inline"></i> Export Options</h2>
+                            </div>
+                            <div class="panel-body">
+                                <div class="export-actions-list">
+                                    <p class="export-description">Export the filtered list of {{ count }} items to your preferred format:</p>
+                                    
+                                    <a href="/reports/export/csv?start_date={{ start_date }}&end_date={{ end_date }}&category={{ category }}" class="btn btn-outline btn-block export-btn-link">
+                                        <i data-lucide="file-text" class="export-icon"></i> Export as CSV Spreadsheet
+                                    </a>
+                                    
+                                    <a href="/reports/export/excel?start_date={{ start_date }}&end_date={{ end_date }}&category={{ category }}" class="btn btn-outline btn-block export-btn-link">
+                                        <i data-lucide="file-spreadsheet" class="export-icon"></i> Export as Excel Workbook
+                                    </a>
+                                    
+                                    <a href="/reports/print?start_date={{ start_date }}&end_date={{ end_date }}&category={{ category }}" target="_blank" class="btn btn-primary btn-block export-btn-link">
+                                        <i data-lucide="printer" class="export-icon"></i> Print PDF Statement
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Breakdown Card -->
+                        <div class="panel-card form-panel">
+                            <div class="panel-header">
+                                <h2><i data-lucide="pie-chart" class="header-icon-inline"></i> Category Totals</h2>
+                            </div>
+                            <div class="panel-body">
+                                <ul class="summary-list reports-summary-list">
+                                    <li><span><i data-lucide="chef-hat" class="sidebar-icon-inline"></i> Food</span> <strong>₹{{ category_totals['Food'] }}</strong></li>
+                                    <li><span><i data-lucide="car" class="sidebar-icon-inline"></i> Travel</span> <strong>₹{{ category_totals['Travel'] }}</strong></li>
+                                    <li><span><i data-lucide="home" class="sidebar-icon-inline"></i> Rent</span> <strong>₹{{ category_totals['Rent'] }}</strong></li>
+                                    <li><span><i data-lucide="shopping-bag" class="sidebar-icon-inline"></i> Shopping</span> <strong>₹{{ category_totals['Shopping'] }}</strong></li>
+                                    <li><span><i data-lucide="party-popper" class="sidebar-icon-inline"></i> Fun</span> <strong>₹{{ category_totals['Fun'] }}</strong></li>
+                                    <li><span><i data-lucide="layers" class="sidebar-icon-inline"></i> Other</span> <strong>₹{{ category_totals['Other'] }}</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
