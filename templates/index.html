@@ -11,6 +11,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
 </head>
 <body class="app-shell">
     <!-- Loading Overlay -->
@@ -61,9 +63,13 @@
                 </button>
                 
                 <div class="sidebar-user">
-                    <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    <a href="/settings" class="sidebar-avatar-link" onclick="showLoader()" title="Profile Settings">
+                        <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+                    </a>
                     <div class="user-info">
-                        <span class="username">{{ session['username'] }}</span>
+                        <a href="/settings" class="sidebar-username-link" onclick="showLoader()" title="Profile Settings">
+                            <span class="username">{{ session['username'] }}</span>
+                        </a>
                         <a href="/logout" class="logout-link" onclick="showLoader()"><i data-lucide="log-out"></i> Logout</a>
                     </div>
                 </div>
@@ -86,6 +92,26 @@
                 </div>
                 
                 <div class="header-actions">
+                    <!-- Notifications Bell Dropdown (Version 9) -->
+                    <div class="header-notifications-wrapper">
+                        <button class="notifications-bell-btn" id="notifBellBtn" onclick="toggleNotificationsDropdown(event)" aria-label="Notifications Center">
+                            <i data-lucide="bell"></i>
+                            <span class="bell-badge" id="notifBadge" style="display: none;">0</span>
+                        </button>
+                        <div class="notifications-dropdown-panel" id="notifDropdown">
+                            <div class="notif-header">
+                                <h3>Notifications</h3>
+                                <button onclick="ajaxReadAllNotifications()" class="btn-read-all border-none bg-none cursor-pointer">Mark all read</button>
+                            </div>
+                            <div class="notif-body" id="notifListContainer">
+                                <div class="notif-empty-state">No new notifications</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-outline" onclick="openImportDrawer()" style="margin-right: 0.5rem;">
+                        <i data-lucide="upload-cloud"></i> Import Statement
+                    </button>
                     <button class="btn btn-primary" onclick="openTransactionDrawer()">
                         <i data-lucide="plus-circle"></i> Add Transaction
                     </button>
@@ -285,17 +311,72 @@
                                 <h2><i data-lucide="sliders" class="header-icon-inline"></i> Budget Settings</h2>
                             </div>
                             <div class="panel-body">
-                                <form id="budgetSettingForm" class="styled-form inline-budget-form">
+                                <form id="budgetSettingForm" class="styled-form">
                                     <div class="input-group">
-                                        <label for="budget">Set Monthly Budget (₹)</label>
+                                        <label for="budgetCategorySelect">Budget Target Scope</label>
+                                        <select id="budgetCategorySelect" name="budget_category" class="styled-select" style="margin-bottom: 0.75rem;" onchange="onBudgetCategoryChange()">
+                                            <option value="global">Overall Global Budget</option>
+                                            <option value="Food">Category: Food</option>
+                                            <option value="Travel">Category: Travel</option>
+                                            <option value="Rent">Category: Rent</option>
+                                            <option value="Shopping">Category: Shopping</option>
+                                            <option value="Fun">Category: Fun</option>
+                                            <option value="Other">Category: Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group">
+                                        <label for="budget">Set Budget Amount (₹)</label>
                                         <div class="input-wrapper-btn">
-                                            <input type="number" id="budget" name="budget" placeholder="Enter Monthly Budget" value="{{ budget_amount }}" required>
+                                            <input type="number" id="budget" name="budget" placeholder="Enter Budget Limit" value="{{ budget_amount }}" required>
                                             <button type="submit" class="btn btn-primary">Save</button>
                                         </div>
                                     </div>
                                 </form>
                                 <div id="budgetResetAction" style="margin-top: 1rem; {% if budget_amount == 0 %}display: none;{% endif %}">
-                                    <button onclick="ajaxResetBudget()" class="btn btn-outline btn-block">Reset Budget to ₹0</button>
+                                    <button onclick="ajaxResetBudget()" class="btn btn-outline btn-block" id="budgetResetBtn">Reset Budget to ₹0</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Budgets list card -->
+                        <div class="panel-card category-budgets-panel animate-fade-in" style="margin-top: 1.5rem;">
+                            <div class="panel-header">
+                                <h2><i data-lucide="pie-chart" class="header-icon-inline"></i> Category Budgets</h2>
+                            </div>
+                            <div class="panel-body" id="categoryBudgetsContainer">
+                                <div class="category-budgets-list" id="categoryBudgetsList">
+                                    {% for cat, amt in category_budgets.items() %}
+                                    <div class="cat-budget-item" id="cat-budget-{{ cat }}">
+                                        <div class="cat-budget-info">
+                                            <span class="cat-name"><strong>{{ cat }}</strong></span>
+                                            <span class="cat-values">₹{{ category_totals.get(cat, 0) }} of ₹{{ amt }}</span>
+                                        </div>
+                                        <div class="cat-progress-bg">
+                                            <div class="cat-progress-fill {% if category_totals.get(cat, 0) >= amt %}danger{% elif category_totals.get(cat, 0) >= amt * 0.8 %}warning{% else %}healthy{% endif %}" 
+                                                 style="width: {% if amt > 0 %}{% if (category_totals.get(cat, 0) / amt * 100) < 100 %}{{ (category_totals.get(cat, 0) / amt * 100) }}{% else %}100{% endif %}{% else %}0{% endif %}%"></div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="cat-budget-empty" id="catBudgetEmptyPlaceholder">
+                                        <p class="text-muted text-sm">No category-specific budgets set yet.</p>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                        <!-- AI Forecast Card (Version 12) -->
+                        <div class="panel-card ai-forecast-panel animate-fade-in" style="margin-top: 1.5rem; background: linear-gradient(135deg, var(--primary-light), var(--card-bg)); border: 1px solid var(--primary-light);">
+                            <div class="panel-header" style="border-bottom: 1px solid var(--border);">
+                                <h2><i data-lucide="sparkles" class="header-icon-inline" style="color: var(--primary);"></i> AI Spending Forecast</h2>
+                            </div>
+                            <div class="panel-body" id="aiForecastContainer">
+                                <div class="forecast-metric">
+                                    <span class="forecast-label" style="font-size: 0.75rem; color: var(--text-muted); display: block;">Projected Month-End Spend</span>
+                                    <span class="forecast-value" id="forecastProjectedSpend" style="font-size: 1.4rem; font-weight: 800; color: var(--text);">₹0</span>
+                                </div>
+                                <div class="forecast-status-box" id="forecastStatusBox" style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; line-height: 1.4;">
+                                    <p class="text-sm" id="forecastStatusText" style="margin: 0;">Analyzing historical trends...</p>
+                                </div>
+                                <div class="forecast-chart-container" style="margin-top: 1rem; height: 90px; position: relative;">
+                                    <canvas id="forecastSparkline" style="width: 100%; height: 100%;"></canvas>
                                 </div>
                             </div>
                         </div>
@@ -423,6 +504,33 @@
                 <h2><i data-lucide="plus-circle"></i> Add Transaction</h2>
                 <button class="drawer-close" onclick="closeTransactionDrawer()"><i data-lucide="x"></i></button>
             </div>
+
+            <!-- Receipt OCR Scanner Widget (Version 8) -->
+            <div class="ocr-scanner-widget">
+                <div class="ocr-dropzone" id="receiptDropzone">
+                    <div class="ocr-dropzone-inner">
+                        <i data-lucide="scan" class="ocr-scan-icon"></i>
+                        <p class="dropzone-text"><strong>⚡ Scan Receipt (OCR)</strong></p>
+                        <p class="dropzone-sub">Drag & drop image or click to browse</p>
+                    </div>
+                    <input type="file" id="receiptFileInput" accept="image/*" style="display: none;">
+                </div>
+                <div class="ocr-status-loader" id="ocrLoader" style="display: none;">
+                    <div class="ocr-spinner"></div>
+                    <span>Analyzing receipt parameters...</span>
+                </div>
+                <div class="ocr-helper-card" id="ocrHelperCard" style="display: none;">
+                    <div class="ocr-helper-icon"><i data-lucide="alert-circle"></i></div>
+                    <div class="ocr-helper-text">
+                        <h4>Tesseract Engine Missing</h4>
+                        <p>To enable receipt scanning, download Tesseract OCR for Windows. <a href="https://github.com/UB-Mannheim/tesseract/wiki" target="_blank" class="download-link-btn">Download Tesseract</a></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ocr-divider">
+                <span>OR FILL MANUALLY</span>
+            </div>
             
             <form id="ajaxAddExpenseForm" class="drawer-form">
                 <div class="form-group">
@@ -458,6 +566,68 @@
                 
                 <button type="submit" class="btn btn-primary btn-block">Save Transaction</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Import Statement Drawer (Version 12) -->
+    <div class="drawer" id="importStatementDrawer">
+        <div class="drawer-content">
+            <div class="drawer-header">
+                <h2><i data-lucide="upload-cloud"></i> Import Bank Statement</h2>
+                <button class="drawer-close-btn" onclick="closeImportDrawer()" aria-label="Close drawer">&times;</button>
+            </div>
+            
+            <div class="drawer-body">
+                <div class="receipt-dropzone" id="csvDropzone">
+                    <div class="dropzone-icon"><i data-lucide="file-spreadsheet"></i></div>
+                    <p>Drag & Drop bank CSV statement file here</p>
+                    <span class="btn btn-sm btn-outline">Browse Files</span>
+                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                </div>
+
+                <!-- Column Mapper UI (Visible only after CSV file is loaded) -->
+                <div id="csvMapperContainer" style="display: none; margin-top: 1.5rem;" class="animate-fade-in">
+                    <h3 class="text-sm font-bold" style="margin-bottom: 0.5rem;">Configure Column Mapping</h3>
+                    <div class="styled-form">
+                        <div class="input-group" style="margin-bottom: 0.75rem;">
+                            <label for="csvDateCol">Date Column</label>
+                            <select id="csvDateCol" class="styled-select"></select>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0.75rem;">
+                            <label for="csvDescCol">Description/Merchant Column</label>
+                            <select id="csvDescCol" class="styled-select"></select>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0.75rem;">
+                            <label for="csvAmountCol">Amount Column</label>
+                            <select id="csvAmountCol" class="styled-select"></select>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-block" onclick="parseCSVWithMapping()" style="margin-top: 1rem;">Map & Preview</button>
+                    </div>
+                </div>
+
+                <!-- Preview Table Container -->
+                <div id="csvPreviewContainer" style="display: none; margin-top: 1.5rem;" class="animate-fade-in">
+                    <h3 class="text-sm font-bold" style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Statement Preview</span>
+                        <span class="text-muted text-xs" id="csvRecordCount">0 records found</span>
+                    </h3>
+                    <div class="table-container" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md);">
+                        <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+                            <thead style="position: sticky; top: 0; background-color: var(--background);">
+                                <tr>
+                                    <th style="width: 30px;"><input type="checkbox" id="csvSelectAll" checked onchange="toggleSelectAllImportCSV(this)"></th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Category</th>
+                                </tr>
+                            </thead>
+                            <tbody id="csvPreviewBody"></tbody>
+                        </table>
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="saveImportedCSV()" style="margin-top: 1.25rem;">Confirm & Import Selected</button>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in with Google — Consent</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f0f4f9;
+            color: #1f1f1f;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .consent-card {
+            background-color: #ffffff;
+            border-radius: 28px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 450px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+        .google-logo {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 1.5rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+            margin: 0 0 0.5rem 0;
+            color: #1f1f1f;
+        }
+        .subtitle {
+            color: #5f6368;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+        .app-scope-box {
+            background-color: #f8f9fa;
+            border-radius: 16px;
+            padding: 1rem 1.25rem;
+            text-align: left;
+            margin-bottom: 2rem;
+            border: 1px solid #e0e0e0;
+        }
+        .scope-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #3c4043;
+            margin-bottom: 0.5rem;
+        }
+        .scope-desc {
+            font-size: 0.82rem;
+            color: #5f6368;
+            margin: 0;
+            line-height: 1.4;
+        }
+        .input-group {
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #3c4043;
+            margin-bottom: 0.5rem;
+        }
+        .input-group input {
+            width: 95%;
+            padding: 0.75rem 10px;
+            border: 1px solid #c4c7c5;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-group input:focus {
+            border-color: #0b57d0;
+        }
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+        .btn {
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 0.6rem 1.5rem;
+            border-radius: 100px;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.2s;
+        }
+        .btn-cancel {
+            background-color: transparent;
+            color: #0b57d0;
+        }
+        .btn-cancel:hover {
+            background-color: #f3f6fc;
+        }
+        .btn-allow {
+            background-color: #0b57d0;
+            color: #ffffff;
+        }
+        .btn-allow:hover {
+            background-color: #0842a0;
+        }
+    </style>
+</head>
+<body>
+    <div class="consent-card">
+        <img class="google-logo" src="https://img.icons8.com/color/48/000000/google-logo.png" alt="Google logo">
+        <h1>Sign in with Google</h1>
+        <p class="subtitle">to continue to <strong>Expense Tracker Pro</strong></p>
+        
+        <div class="app-scope-box">
+            <div class="scope-title">Permissions requested:</div>
+            <p class="scope-desc">
+                • View your email address (your official Google Mail)<br>
+                • View your basic profile info (username)
+            </p>
+        </div>
+
+        <form action="/login/google/callback" method="GET">
+            <div class="input-group">
+                <label for="email">Enter your Google Email Address</label>
+                <input type="email" id="email" name="email" placeholder="username@gmail.com" required value="shannu@gmail.com">
+            </div>
+
+            <div class="actions">
+                <button type="button" onclick="window.location.href='/login'" class="btn btn-cancel">Cancel</button>
+                <button type="submit" class="btn btn-allow">Allow & Sign In</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
