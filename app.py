@@ -9,7 +9,6 @@ import threading
 from datetime import datetime, timedelta
 import jwt
 from functools import wraps
-from authlib.integrations.flask_client import OAuth
 from flask import (
     Flask,
     render_template,
@@ -53,20 +52,6 @@ from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
 app.secret_key = "expense_tracker_secret"
-
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=os.environ.get('GOOGLE_CLIENT_ID', 'MOCK_CLIENT_ID'),
-    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', 'MOCK_CLIENT_SECRET'),
-    access_token_url='https://oauth2.googleapis.com/token',
-    access_token_params=None,
-    authorize_url='https://accounts.google.com/o/oauth2/auth',
-    authorize_params=None,
-    api_base_url='https://www.googleapis.com/oauth2/v2/',
-    client_kwargs={'scope': 'openid email profile'},
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
-)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///expenses.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -256,50 +241,6 @@ def login():
 def logout():
     session.clear()
     return redirect('/login')
-
-@app.route('/login/google')
-def login_google():
-    client_id = os.environ.get('GOOGLE_CLIENT_ID')
-    client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
-    
-    if not client_id or not client_secret or client_id == 'MOCK_CLIENT_ID':
-        return render_template('google_consent.html')
-        
-    redirect_uri = url_for('login_google_callback', _external=True)
-    return google.authorize_redirect(redirect_uri)
-
-@app.route('/login/google/callback')
-def login_google_callback():
-    client_id = os.environ.get('GOOGLE_CLIENT_ID')
-    client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
-    
-    if not client_id or not client_secret or client_id == 'MOCK_CLIENT_ID':
-        email = request.args.get('email', 'user@gmail.com')
-        name = email.split('@')[0]
-    else:
-        try:
-            token = google.authorize_access_token()
-            resp = google.get('userinfo')
-            user_info = resp.json()
-            email = user_info['email']
-            name = user_info.get('name', email.split('@')[0])
-        except Exception as e:
-            flash(f"Google login failed: {e}")
-            return redirect(url_for('login'))
-            
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        import uuid
-        hashed_pw = generate_password_hash(str(uuid.uuid4()))
-        user = User(username=name, email=email, password=hashed_pw)
-        db.session.add(user)
-        db.session.commit()
-        
-    session['user_id'] = user.id
-    session['username'] = user.username
-    
-    flash(f"Successfully logged in as {email} via Google!")
-    return redirect(url_for('index'))
 
 @app.route('/delete_budget')
 def delete_budget():
